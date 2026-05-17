@@ -1,0 +1,186 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function currentProfile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function activeUser() {
+      return signedIn()
+        && currentProfile().data.status == "active";
+    }
+
+    function adminUser() {
+      return activeUser()
+        && currentProfile().data.role == "admin";
+    }
+
+    function superAdminUser() {
+      return activeUser()
+        && currentProfile().data.role == "super_admin";
+    }
+
+    function projectDeleteUser() {
+      return adminUser() || superAdminUser();
+    }
+
+    function validUserRole(role) {
+      return role in ["user", "admin", "super_admin"];
+    }
+
+    function validUserStatus(status) {
+      return status in ["active", "disabled"];
+    }
+
+    function hasNoPasswordField() {
+      return !("password" in request.resource.data);
+    }
+
+    function validUserDocument(userId) {
+      return hasNoPasswordField()
+        && request.resource.data.uid == userId
+        && request.resource.data.keys().hasOnly([
+          "uid",
+          "name",
+          "email",
+          "role",
+          "status",
+          "createdAt",
+          "updatedAt"
+        ])
+        && validUserRole(request.resource.data.role)
+        && validUserStatus(request.resource.data.status);
+    }
+
+    function adminCanCreateUser(userId) {
+      return adminUser()
+        && validUserDocument(userId)
+        && request.resource.data.role in ["user", "admin"];
+    }
+
+    function regularUserCanCreateUser(userId) {
+      return activeUser()
+        && currentProfile().data.role == "user"
+        && validUserDocument(userId)
+        && request.resource.data.role == "user";
+    }
+
+    function superAdminCanCreateUser(userId) {
+      return superAdminUser()
+        && validUserDocument(userId);
+    }
+
+    function adminCanUpdateUser() {
+      return adminUser()
+        && hasNoPasswordField()
+        && resource.data.role == "user"
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "name",
+          "role",
+          "status",
+          "updatedAt"
+        ])
+        && request.resource.data.role in ["user", "admin"]
+        && validUserStatus(request.resource.data.status);
+    }
+
+    function superAdminCanUpdateUser() {
+      return superAdminUser()
+        && hasNoPasswordField()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "name",
+          "role",
+          "status",
+          "updatedAt"
+        ])
+        && validUserRole(request.resource.data.role)
+        && validUserStatus(request.resource.data.status);
+    }
+
+    function adminCanDeleteUser(userId) {
+      return adminUser()
+        && request.auth.uid != userId
+        && resource.data.role == "user";
+    }
+
+    function superAdminCanDeleteUser(userId) {
+      return superAdminUser()
+        && request.auth.uid != userId;
+    }
+
+    match /users/{userId} {
+      allow read: if signedIn() && request.auth.uid == userId;
+      allow list: if activeUser();
+      allow get: if activeUser();
+      allow create: if adminCanCreateUser(userId)
+        || regularUserCanCreateUser(userId)
+        || superAdminCanCreateUser(userId);
+      allow update: if adminCanUpdateUser()
+        || superAdminCanUpdateUser();
+      allow delete: if adminCanDeleteUser(userId)
+        || superAdminCanDeleteUser(userId);
+    }
+
+    match /teamMembers/{memberId} {
+      allow read, write: if activeUser();
+    }
+
+    match /logs/{logId} {
+      allow read, list: if activeUser();
+      allow create: if activeUser()
+        && request.resource.data.userId == request.auth.uid
+        && !("password" in request.resource.data);
+      allow update: if false;
+      allow delete: if superAdminUser();
+    }
+
+    match /geoTaskLists/{taskListId} {
+      allow read, write: if activeUser();
+
+      match /plans/{planId} {
+        allow read, write: if activeUser();
+
+        match /phases/{phaseId} {
+          allow read, write: if activeUser();
+
+          match /tasks/{taskId} {
+            allow read, write: if activeUser();
+          }
+        }
+      }
+    }
+
+    match /projects/{projectId} {
+      allow read: if activeUser();
+      allow create: if activeUser()
+        && request.resource.data.createdBy == request.auth.uid;
+      allow update: if activeUser();
+      allow delete: if projectDeleteUser();
+
+      match /teamMembers/{memberId} {
+        allow read, write: if activeUser();
+      }
+
+      match /plans/{planId} {
+        allow read, write: if activeUser();
+
+        match /phases/{phaseId} {
+          allow read, write: if activeUser();
+
+          match /tasks/{taskId} {
+            allow read, write: if activeUser();
+          }
+        }
+      }
+
+      match /importExportMetadata/{metadataId} {
+        allow read, write: if activeUser();
+      }
+    }
+  }
+}

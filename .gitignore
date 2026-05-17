@@ -1,0 +1,15 @@
+.DS_Store
+Thumbs.db
+*.log
+.env
+.env.*
+!.env.local.example
+node_modules/
+dist/
+build/
+.vercel/
+.netlify/
+.env.local
+.next/
+*-firebase-adminsdk-*.json
+legacy/

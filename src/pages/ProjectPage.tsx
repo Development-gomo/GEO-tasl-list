@@ -1,0 +1,81 @@
+import { doc, onSnapshot } from "firebase/firestore";
+import { useEffect, useRef, useState } from "react";
+import { Link, useParams } from "react-router-dom";
+import { AuthGuard } from "@/components/AuthGuard";
+import { DashboardLayout } from "@/components/DashboardLayout";
+import { ProgressSummary } from "@/components/ProgressSummary";
+import { TaskTableEditor } from "@/components/TaskTableEditor";
+import { db } from "@/lib/firebase";
+import { updateProjectActivePlan } from "@/lib/firestore";
+import type { PlanType, Project } from "@/types";
+
+export function ProjectPage() {
+  const { projectId = "" } = useParams();
+  const [project, setProject] = useState<Project | null>(null);
+  const [planType, setPlanType] = useState<PlanType>("30");
+  const hydratedProjectIdRef = useRef("");
+
+  useEffect(() => {
+    if (!projectId) return undefined;
+    hydratedProjectIdRef.current = "";
+    const unsubscribe = onSnapshot(doc(db, "projects", projectId), (snapshot) => {
+      if (!snapshot.exists()) {
+        setProject(null);
+        return;
+      }
+      const nextProject = { id: snapshot.id, ...snapshot.data() } as Project;
+      setProject(nextProject);
+      if (hydratedProjectIdRef.current !== snapshot.id) {
+        setPlanType(nextProject.activePlanType || "30");
+        hydratedProjectIdRef.current = snapshot.id;
+      }
+    });
+    return unsubscribe;
+  }, [projectId]);
+
+  async function handlePlanSelect(type: PlanType) {
+    setPlanType(type);
+    await updateProjectActivePlan(projectId, type);
+  }
+
+  return (
+    <AuthGuard>
+      <DashboardLayout
+        title={project?.name || "GEO Workspace"}
+        description="Manage team ownership, plan execution, links, notes, and spreadsheet handoffs."
+        actions={project ? <Link className="btn-secondary h-12 px-5" to={`/projects/${projectId}/edit`}>Edit Project</Link> : undefined}
+      >
+        {!project ? (
+          <section className="panel p-6">
+            <h1 className="text-xl font-semibold">Project not found</h1>
+            <Link className="btn-secondary mt-4" to="/projects/">Back to workspaces</Link>
+          </section>
+        ) : (
+          <div className="grid gap-6">
+            <section className="grid gap-4 lg:grid-cols-[1fr_340px]">
+              <div className="panel p-4">
+                <div className="flex flex-wrap gap-2">
+                  {(["30", "60", "90"] as PlanType[]).map((type) => (
+                    <button
+                      className={`rounded-lg px-4 py-2 text-sm font-semibold ${planType === type ? "bg-[#e5f7ed] text-[#18b866]" : "bg-[#f4f6fa] text-[#42506a]"}`}
+                      key={type}
+                      onClick={() => handlePlanSelect(type)}
+                      type="button"
+                    >
+                      {type}-day {type === "90" ? "locked" : "plan"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="panel p-4">
+                <ProgressSummary summary={project.progress?.[planType]} />
+              </div>
+            </section>
+
+            <TaskTableEditor planType={planType} projectId={projectId} />
+          </div>
+        )}
+      </DashboardLayout>
+    </AuthGuard>
+  );
+}

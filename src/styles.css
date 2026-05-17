@@ -1,0 +1,98 @@
+@import "tailwindcss";
+
+:root {
+  font-family: "Plus Jakarta Sans", "Segoe UI", sans-serif;
+  color-scheme: light;
+  color: #070c11;
+  background: #f5f7fb;
+  line-height: 1.5;
+  font-weight: 500;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  height: 100vh;
+  overflow: hidden;
+  background: #f5f7fb;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+select.input {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none'%3E%3Cpath d='m5 7.5 5 5 5-5' stroke='%23475467' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-size: 14px 14px;
+  background-position: right 10px center;
+  padding-right: 42px;
+}
+
+@layer components {
+  .panel {
+    @apply rounded-lg border border-[#d6deeb] bg-white shadow-sm;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center rounded-lg bg-[#18b866] px-5 py-3 text-sm font-bold text-white shadow-[0_14px_28px_rgba(24,184,102,0.18)] transition hover:bg-[#13a75b] disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center rounded-lg border border-[#cfd9e8] bg-white px-4 py-2 text-sm font-semibold text-[#2f3a4f] transition hover:bg-[#f7fafc] disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .field {
+    @apply grid gap-1.5 text-sm font-medium text-[#42506a];
+  }
+
+  .input {
+    @apply rounded-lg border border-[#cfd9e8] bg-white px-3 py-2 text-sm text-[#0b1018] outline-none transition focus:border-[#18b866] focus:ring-2 focus:ring-[#18b866]/15;
+  }
+
+  .badge {
+    @apply inline-flex rounded-full px-2.5 py-1 text-xs font-semibold;
+  }
+
+  .gantt-actions-cell {
+    @apply flex items-center justify-end gap-2;
+  }
+
+  .gantt-grid-edit,
+  .gantt-grid-delete {
+    @apply inline-flex h-9 w-9 items-center justify-center rounded-lg border bg-white transition disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .gantt-grid-edit {
+    @apply border-[#cfd9e8] text-[#475467] hover:border-[#18b866]/30 hover:text-[#18b866] hover:shadow-[0_8px_16px_rgba(16,24,40,0.08)];
+  }
+
+  .gantt-grid-delete {
+    @apply border-[#ffd5d2] text-[#f04438] hover:border-[#f04438]/40 hover:bg-[#fff5f4] hover:shadow-[0_8px_16px_rgba(240,68,56,0.12)];
+  }
+
+  .gantt-grid-edit svg,
+  .gantt-grid-delete svg {
+    @apply h-5 w-5;
+  }
+
+}
