@@ -56,7 +56,7 @@ export function ProjectPage() {
             <Link className="btn-secondary mt-4" to="/projects/">Back to workspaces</Link>
           </section>
         ) : (
-          <div className="grid gap-6">
+          <div className="grid gap-4">
             <TaskTableEditor planType={planType} projectId={projectId} onPlanSelect={handlePlanSelect} />
           </div>
         )}

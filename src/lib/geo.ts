@@ -120,5 +120,6 @@ export function progressForTasks(tasks: Pick<Task, "status">[]): ProgressSummary
 }
 
 export function phaseTitle(phase: Pick<Phase, "title" | "name">) {
-  return `${phase.title.replace("PHASE ", "Phase ")}${phase.name ? ` - ${phase.name}` : ""}`;
+  const title = phase.title.replace("PHASE ", "Phase ").replace(/^W(\d+)$/i, "Phase $1");
+  return `${title}${phase.name ? ` - ${phase.name}` : ""}`;
 }

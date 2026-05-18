@@ -157,7 +157,7 @@ export function DashboardLayout({
       <section className="grid h-screen min-w-0 grid-rows-[69px_minmax(0,1fr)] overflow-hidden bg-[#f5f7fb]">
         <header className="sticky top-0 z-20 flex h-[69px] items-center justify-between gap-4 border-b border-[#d7dfeb] bg-white px-6">
           <div>
-            <h1 className="m-0 text-[20px] leading-[1.25] font-semibold text-[#070c11]">{title}</h1>
+            <h1 className="m-0 text-[20px] leading-[1.25] font-bold text-[#070c11]">{title}</h1>
             <p className="mt-1 text-sm text-[#667085]">{description}</p>
           </div>
           <div className="flex items-center gap-3">

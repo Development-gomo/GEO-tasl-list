@@ -29,33 +29,29 @@ export function TaskTableEditor({
   const [activePhaseId, setActivePhaseId] = useState<string>("");
   const [expandedTaskKey, setExpandedTaskKey] = useState<string>("");
   const fileRef = useRef<HTMLInputElement>(null);
-  const hydratedPhaseKeyRef = useRef("");
 
   useEffect(() => {
     setPhases([]);
     setTasks([]);
     setActivePhaseId("");
     setExpandedTaskKey("");
-    hydratedPhaseKeyRef.current = "";
   }, [planType, projectId]);
 
   useEffect(() => {
     if (disabled) return;
     const unsubscribe = onSnapshot(query(collection(db, "projects", projectId, "plans", planType, "phases"), orderBy("order")), (snapshot) => {
       clearLoadError("project-task-phases");
-      setPhases(snapshot.docs.map((item) => ({ id: item.id, ...item.data() }) as Phase));
+      const nextPhases = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }) as Phase);
+      setPhases(nextPhases);
+      setActivePhaseId((current) => {
+        if (current && nextPhases.some((phase) => phase.id === current)) return current;
+        return nextPhases[0]?.id || "";
+      });
     }, (error) => {
       reportLoadError("project-task-phases", formatLoadError("Project task phases", error));
     });
     return unsubscribe;
   }, [clearLoadError, disabled, planType, projectId, reportLoadError]);
-
-  useEffect(() => {
-    const key = `${projectId}-${planType}`;
-    if (!phases.length || hydratedPhaseKeyRef.current === key) return;
-    setActivePhaseId(phases[0].id);
-    hydratedPhaseKeyRef.current = key;
-  }, [phases, planType, projectId]);
 
   useEffect(() => {
     if (disabled || !phases.length) {
@@ -65,7 +61,7 @@ export function TaskTableEditor({
     const unsubscribers = phases.map((phase) =>
       onSnapshot(query(collection(db, "projects", projectId, "plans", planType, "phases", phase.id, "tasks"), orderBy("number")), (snapshot) => {
         clearLoadError(`project-tasks-${phase.id}`);
-        const phaseTasks = snapshot.docs.map((item) => ({ id: item.id, phaseId: phase.id, phaseOrder: phase.order, ...item.data() }) as Task);
+        const phaseTasks = snapshot.docs.map((item) => ({ ...item.data(), id: item.id, phaseId: phase.id, phaseOrder: phase.order }) as Task);
         setTasks((current) => {
           const other = current.filter((task) => task.phaseId !== phase.id);
           return [...other, ...phaseTasks].sort((a, b) => a.phaseOrder - b.phaseOrder || Number(a.number) - Number(b.number));
@@ -91,9 +87,10 @@ export function TaskTableEditor({
     if (!disabled && tasks.length) updatePlanProgress(projectId, planType, tasks);
   }, [disabled, planType, projectId, tasks]);
 
-  const visibleTasks = useMemo(() => (activePhaseId === "all" || !activePhaseId ? tasks : tasks.filter((task) => task.phaseId === activePhaseId)), [activePhaseId, tasks]);
+  const selectedPhaseId = activePhaseId || phases[0]?.id || "";
+  const visibleTasks = useMemo(() => (!selectedPhaseId ? tasks : tasks.filter((task) => task.phaseId === selectedPhaseId)), [selectedPhaseId, tasks]);
   const progress = progressForTasks(tasks);
-  const activePhase = phases.find((phase) => phase.id === activePhaseId);
+  const activePhase = phases.find((phase) => phase.id === selectedPhaseId);
   const activePhaseTasks = activePhase ? tasks.filter((task) => task.phaseId === activePhase.id) : tasks;
   const activeProgress = progressForTasks(activePhaseTasks);
 
@@ -199,41 +196,42 @@ export function TaskTableEditor({
   }
 
   return (
-    <section className="panel overflow-hidden">
-      <ProjectTaskOverview
-        activePhase={activePhase}
-        planType={planType}
-        progress={activeProgress}
-        onPlanSelect={onPlanSelect}
-      />
-      <div className="flex flex-col justify-between gap-4 border-b border-[#d6deeb] p-5 lg:flex-row lg:items-center">
-        <div>
-          <h2 className="text-xl font-bold">{planType}-day task plan</h2>
-          <p className="text-sm text-[#65728a]">{progress.done}/{progress.total} complete, {progress.pct}% progress</p>
+    <>
+      <section className="panel overflow-hidden">
+        <ProjectTaskOverview
+          activePhase={activePhase}
+          planType={planType}
+          progress={activeProgress}
+          onPlanSelect={onPlanSelect}
+        />
+        <div className="flex flex-col justify-between gap-4 border-b border-[#d6deeb] p-5 lg:flex-row lg:items-center">
+          <div>
+            <h2 className="text-xl font-bold">{planType}-day task plan</h2>
+            <p className="text-sm text-[#65728a]">{progress.done}/{progress.total} complete, {progress.pct}% progress</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <select className="input w-[350px] max-w-full" value={selectedPhaseId} onChange={(event) => setActivePhaseId(event.target.value)}>
+              {phases.map((phase) => <option key={phase.id} value={phase.id}>{phaseTitle(phase)}</option>)}
+            </select>
+            <button className="btn-secondary" type="button" onClick={() => fileRef.current?.click()}>Upload edited sheet</button>
+            <button className="btn-primary" type="button" onClick={exportSheet}>Export Excel</button>
+            <input
+              ref={fileRef}
+              className="hidden"
+              type="file"
+              accept=".xlsx,.xls,.csv"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.currentTarget.value = "";
+                if (!file) return;
+                if (file.name.endsWith(".csv")) importCsv(file);
+                else importSheet(file);
+              }}
+            />
+          </div>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <select className="input" value={activePhaseId} onChange={(event) => setActivePhaseId(event.target.value)}>
-            <option value="all">All chapters</option>
-            {phases.map((phase) => <option key={phase.id} value={phase.id}>{phaseTitle(phase)}</option>)}
-          </select>
-          <button className="btn-secondary" type="button" onClick={() => fileRef.current?.click()}>Upload edited sheet</button>
-          <button className="btn-primary" type="button" onClick={exportSheet}>Export Excel</button>
-          <input
-            ref={fileRef}
-            className="hidden"
-            type="file"
-            accept=".xlsx,.xls,.csv"
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              event.currentTarget.value = "";
-              if (!file) return;
-              if (file.name.endsWith(".csv")) importCsv(file);
-              else importSheet(file);
-            }}
-          />
-        </div>
-      </div>
-      <div className="grid gap-4 bg-[#f8fafc] p-5">
+      </section>
+      <div className="grid gap-4">
         {visibleTasks.map((task) => {
           const taskKey = `${task.phaseId}-${task.id}`;
           return (
@@ -254,7 +252,7 @@ export function TaskTableEditor({
           </div>
         ) : null}
       </div>
-    </section>
+    </>
   );
 }
 
@@ -280,7 +278,7 @@ function TaskAccordionCard({
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   return (
-    <article className={`rounded-[18px] border bg-white shadow-[0_2px_8px_rgba(16,24,40,0.04)] ${expanded ? "border-[#1b22ff]" : "border-[#d3deeb]"}`}>
+    <article className={`rounded-[8px] border bg-white shadow-[0_2px_8px_rgba(16,24,40,0.04)] ${expanded ? "border-[#1b22ff]" : "border-[#d3deeb]"}`}>
       <div className={`grid gap-4 p-5 ${expanded ? "border-b border-[#d6deeb]" : ""} md:grid-cols-[36px_minmax(0,1fr)_84px]`}>
         <button
           className={`mt-1 flex h-7 w-7 items-center justify-center rounded-[8px] border-2 ${checked ? "border-[#1115ff] bg-[#1115ff] text-white" : "border-[#b8c6d4] bg-white text-transparent"}`}
@@ -311,7 +309,7 @@ function TaskAccordionCard({
               autoFocus
             />
           ) : (
-            <h3 className="mt-1 text-[16px] leading-[1.35] font-medium text-[#070c11]">{task.task}</h3>
+            <div className="mt-1 text-[16px] leading-[1.35] font-medium text-[#070c11]">{task.task}</div>
           )}
           <div className="mt-3 flex flex-wrap gap-2">
             <TaskBadge tone="status">{task.status}</TaskBadge>
@@ -468,7 +466,7 @@ function TaskDetailSection({
   return (
     <section className="grid">
       <div className="flex items-center justify-between gap-3">
-        <h4 className="text-[13px] font-bold tracking-[0.12em] text-[#53627a] uppercase">{title}</h4>
+        <p className="text-[14px] font-bold tracking-[0.12em] text-[#000000] uppercase">{title}</p>
         <button
           className={`grid h-9 w-9 place-items-center rounded-full border bg-white transition ${editing ? "border-[#1115ff] text-[#1115ff]" : "border-[#b8c6d4] text-[#1d2b3d] hover:border-[#1115ff] hover:text-[#1115ff]"}`}
           type="button"
@@ -551,17 +549,17 @@ function ProjectTaskOverview({
   const phaseHeading = activePhase?.name || `${planType}-day task plan`;
 
   return (
-    <div className="border-b border-[#d6deeb] bg-white p-6">
+    <div className="border-b border-[#d6deeb] bg-white p-5">
       <div className="grid gap-5 xl:grid-cols-[3fr_1fr]">
         <div className="grid gap-6 lg:grid-cols-[3fr_1fr]">
           <div className="min-w-0">
             <span className="inline-flex rounded-full bg-[#eef3f8] px-4 py-2 text-[12px] font-bold text-[#344054]">
               {phaseLabel}{activePhase?.name ? ` · ${activePhase.name}` : ""}
             </span>
-            <h2 className="mt-4 text-[32px] leading-[1.2] font-semibold text-[#070c11]">
+            <h2 className="mt-4 text-[26px] leading-[1.2] font-bold text-[#070c11]">
               {phaseHeading}
             </h2>
-            <p className="mt-2 max-w-[940px] text-[16px] leading-[1.7] text-[#53627a]">
+            <p className="mt-2 max-w-[940px] text-[14px] leading-[1.7] text-[#53627a]">
               {planType}-Day Plan chapter with editable execution guidance, tools, links, and owner/status tracking.
             </p>
           </div>
