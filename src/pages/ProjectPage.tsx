@@ -3,7 +3,6 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { AuthGuard } from "@/components/AuthGuard";
 import { DashboardLayout } from "@/components/DashboardLayout";
-import { ProgressSummary } from "@/components/ProgressSummary";
 import { TaskTableEditor } from "@/components/TaskTableEditor";
 import { useAuth } from "@/context/AuthContext";
 import { db } from "@/lib/firebase";
@@ -58,27 +57,7 @@ export function ProjectPage() {
           </section>
         ) : (
           <div className="grid gap-6">
-            <section className="grid gap-4 lg:grid-cols-[1fr_340px]">
-              <div className="panel p-4">
-                <div className="flex flex-wrap gap-2">
-                  {(["30", "60", "90"] as PlanType[]).map((type) => (
-                    <button
-                      className={`rounded-lg px-4 py-2 text-sm font-semibold ${planType === type ? "bg-[#e5f7ed] text-[#18b866]" : "bg-[#f4f6fa] text-[#42506a]"}`}
-                      key={type}
-                      onClick={() => handlePlanSelect(type)}
-                      type="button"
-                    >
-                      {type}-day {type === "90" ? "locked" : "plan"}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="panel p-4">
-                <ProgressSummary summary={project.progress?.[planType]} />
-              </div>
-            </section>
-
-            <TaskTableEditor planType={planType} projectId={projectId} />
+            <TaskTableEditor planType={planType} projectId={projectId} onPlanSelect={handlePlanSelect} />
           </div>
         )}
       </DashboardLayout>

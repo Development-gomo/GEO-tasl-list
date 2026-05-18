@@ -604,6 +604,22 @@ export async function updateTask(projectId: string, planType: PlanType, task: Ta
   }
 }
 
+export async function deleteTask(projectId: string, planType: PlanType, task: Task) {
+  const ref = doc(db, "projects", projectId, "plans", planType, "phases", task.phaseId, "tasks", task.id);
+  const projectSnapshot = await getDoc(projectRef(projectId));
+  const project = projectSnapshot.exists() ? ({ id: projectSnapshot.id, ...projectSnapshot.data() } as Project) : null;
+  await deleteDoc(ref);
+  await createAuditLog({
+    actionLabel: "Project Task Deleted",
+    projectId,
+    projectName: project?.name || "",
+    details: `Deleted ${task.task || `Task ${task.number}`}`,
+    detailsEntries: [
+      { task: task.task || `Task ${task.number}`, field: "Summary", from: task.task || `Task ${task.number}`, to: "" },
+    ],
+  });
+}
+
 export async function upsertTeamMember(projectId: string, member: TeamMember | Omit<TeamMember, "id">) {
   const id = "id" in member && member.id ? member.id : doc(teamRef(projectId)).id;
   const ref = doc(db, "projects", projectId, "teamMembers", id);

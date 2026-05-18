@@ -48,13 +48,22 @@ function canDeleteUser(currentRole: UserRole | undefined, target: UserProfile, c
   return false;
 }
 
-export function UserManagement() {
+type UserTab = "all" | "active" | "disabled";
+
+export function UserManagement({
+  isCreateOpen,
+  onCreateOpenChange,
+}: {
+  isCreateOpen: boolean;
+  onCreateOpenChange: (open: boolean) => void;
+}) {
   const { clearLoadError, profile, reportLoadError } = useAuth();
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [draft, setDraft] = useState<UserDraft>(emptyDraft);
   const [editing, setEditing] = useState<UserProfile | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [activeTab, setActiveTab] = useState<UserTab>("all");
   const createRoles = creatableRoles(profile?.role);
   const canCreate = createRoles.length > 0;
 
@@ -76,6 +85,7 @@ export function UserManagement() {
       await createManagedUser(draft);
       setDraft(emptyDraft);
       setMessage("User created.");
+      onCreateOpenChange(false);
     } catch (error) {
       setMessage(userAdminError(error));
     } finally {
@@ -113,74 +123,96 @@ export function UserManagement() {
     }
   }
 
-  return (
-    <div className="grid gap-6">
-      {canCreate ? (
-        <form className="panel grid gap-4 p-6" onSubmit={handleCreate}>
-          <div>
-            <p className="text-sm font-bold uppercase tracking-[0.22em] text-[#18b866]">Create Access</p>
-            <h2 className="mt-2 text-2xl font-bold">Create user</h2>
-          </div>
-          <div className="grid gap-3 md:grid-cols-[1fr_1fr_1fr_160px_160px]">
-            <input className="input" placeholder="Name" value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} required />
-            <input className="input" placeholder="Email" type="email" value={draft.email} onChange={(event) => setDraft({ ...draft, email: event.target.value })} required />
-            <input className="input" placeholder="Password" type="password" value={draft.password} onChange={(event) => setDraft({ ...draft, password: event.target.value })} minLength={6} required />
-            <select className="input" value={draft.role} onChange={(event) => setDraft({ ...draft, role: event.target.value as UserRole })}>
-              {createRoles.map((role) => <option key={role} value={role}>{roleLabels[role]}</option>)}
-            </select>
-            <select className="input" value={draft.status} onChange={(event) => setDraft({ ...draft, status: event.target.value as UserStatus })}>
-              <option value="active">active</option>
-              <option value="disabled">disabled</option>
-            </select>
-          </div>
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-[#65728a]">{message}</p>
-            <button className="btn-primary" disabled={busy} type="submit">{busy ? "Working..." : "Create user"}</button>
-          </div>
-        </form>
-      ) : (
-        <section className="panel p-6">
-          <p className="text-sm font-bold uppercase tracking-[0.22em] text-[#18b866]">User Directory</p>
-          <h2 className="mt-2 text-2xl font-bold">Users</h2>
-          <p className="mt-2 text-sm text-[#667085]">You can review user access, but your account cannot create or edit users.</p>
-        </section>
-      )}
+  const activeUsers = users.filter((user) => user.status === "active");
+  const disabledUsers = users.filter((user) => user.status === "disabled");
+  const filteredUsers = users.filter((user) => activeTab === "all" || user.status === activeTab);
+  const tabs = [
+    { id: "all", label: "Total Users", count: users.length },
+    { id: "active", label: "Current Users", count: activeUsers.length },
+    { id: "disabled", label: "Disabled Users", count: disabledUsers.length },
+  ] as const;
 
-      <UserTable busy={busy} currentRole={profile?.role} currentUid={profile?.uid} editing={editing} setEditing={setEditing} users={users} onDelete={handleDelete} onUpdate={handleUpdate} />
+  return (
+    <div>
+      <CreateUserModal
+        busy={busy}
+        canCreate={canCreate}
+        createRoles={createRoles}
+        draft={draft}
+        isOpen={isCreateOpen}
+        message={message}
+        setDraft={setDraft}
+        onClose={() => onCreateOpenChange(false)}
+        onSubmit={handleCreate}
+      />
+
+      <UserTable
+        activeTab={activeTab}
+        busy={busy}
+        currentRole={profile?.role}
+        currentUid={profile?.uid}
+        editing={editing}
+        setActiveTab={setActiveTab}
+        setEditing={setEditing}
+        tabs={tabs}
+        users={filteredUsers}
+        onDelete={handleDelete}
+        onUpdate={handleUpdate}
+      />
     </div>
   );
 }
 
 function UserTable({
+  activeTab,
   users,
   editing,
   currentRole,
   currentUid,
   busy,
+  tabs,
+  setActiveTab,
   setEditing,
   onDelete,
   onUpdate,
 }: {
+  activeTab: UserTab;
   users: UserProfile[];
   editing: UserProfile | null;
   currentRole?: UserRole;
   currentUid?: string;
   busy: boolean;
+  tabs: readonly { id: UserTab; label: string; count: number }[];
+  setActiveTab: (tab: UserTab) => void;
   setEditing: (user: UserProfile | null) => void;
   onDelete: (user: UserProfile) => Promise<void>;
   onUpdate: (user: UserProfile) => Promise<void>;
 }) {
   return (
-    <section className="panel overflow-hidden">
+    <section className="panel overflow-hidden shadow-[0_18px_40px_rgba(16,24,40,0.06)]">
+      <div className="border-b border-[#d7dfeb] px-6 py-5">
+        <div className="inline-flex w-fit rounded-[8px] border border-[#cfd9e8] bg-white p-1">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              className={`rounded-[8px] px-4 py-2.5 text-sm font-semibold transition ${activeTab === tab.id ? "bg-[#e8f8ef] text-[#17b26a]" : "text-[#475467] hover:bg-[#f7fafc]"}`}
+              type="button"
+              onClick={() => setActiveTab(tab.id)}
+            >
+              {tab.label} ({tab.count})
+            </button>
+          ))}
+        </div>
+      </div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[760px] text-left text-sm">
+        <table className="w-full min-w-[860px] text-left text-sm">
           <thead className="bg-[#f4f6fa] text-xs uppercase tracking-wide text-[#65728a]">
             <tr>
-              <th className="px-4 py-3">Name</th>
-              <th className="px-4 py-3">Email</th>
-              <th className="px-4 py-3">Role</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3 text-right">Actions</th>
+              <th className="px-6 py-4">Name</th>
+              <th className="px-6 py-4">Email</th>
+              <th className="px-6 py-4">Role</th>
+              <th className="px-6 py-4">Status</th>
+              <th className="px-6 py-4 text-right">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[#d6deeb]">
@@ -192,26 +224,26 @@ function UserTable({
               const editableRoles = currentRole === "super_admin" ? ["user", "admin", "super_admin"] as UserRole[] : ["user", "admin"] as UserRole[];
               return (
                 <tr key={user.uid}>
-                  <td className="px-4 py-3">
-                    {isEditing ? <input className="input" value={value.name} onChange={(event) => setEditing({ ...value, name: event.target.value })} /> : user.name}
+                  <td className="px-6 py-5 font-semibold text-[#070c11]">
+                    {isEditing ? <input className="input w-full" value={value.name} onChange={(event) => setEditing({ ...value, name: event.target.value })} /> : user.name}
                   </td>
-                  <td className="px-4 py-3 text-[#65728a]">{user.email}</td>
-                  <td className="px-4 py-3">
+                  <td className="px-6 py-5 text-[#65728a]">{user.email}</td>
+                  <td className="px-6 py-5">
                     {isEditing ? (
-                      <select className="input" value={value.role} onChange={(event) => setEditing({ ...value, role: event.target.value as UserRole })}>
+                      <select className="input w-full" value={value.role} onChange={(event) => setEditing({ ...value, role: event.target.value as UserRole })}>
                         {editableRoles.map((role) => <option key={role} value={role}>{roleLabels[role]}</option>)}
                       </select>
                     ) : roleLabels[user.role]}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-6 py-5">
                     {isEditing ? (
-                      <select className="input" value={value.status} onChange={(event) => setEditing({ ...value, status: event.target.value as UserStatus })}>
+                      <select className="input w-full" value={value.status} onChange={(event) => setEditing({ ...value, status: event.target.value as UserStatus })}>
                         <option value="active">active</option>
                         <option value="disabled">disabled</option>
                       </select>
                     ) : <span className={`badge ${user.status === "active" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>{user.status}</span>}
                   </td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="px-6 py-5 text-right">
                     {isEditing ? (
                       <div className="flex justify-end gap-2">
                         <button className="btn-secondary px-3 py-1.5" type="button" onClick={() => setEditing(null)}>Cancel</button>
@@ -241,10 +273,101 @@ function UserTable({
                 </tr>
               );
             })}
+            {!users.length ? (
+              <tr>
+                <td className="px-6 py-8 text-center text-[#667085]" colSpan={5}>No users found.</td>
+              </tr>
+            ) : null}
           </tbody>
         </table>
       </div>
     </section>
+  );
+}
+
+function CreateUserModal({
+  busy,
+  canCreate,
+  createRoles,
+  draft,
+  isOpen,
+  message,
+  setDraft,
+  onClose,
+  onSubmit,
+}: {
+  busy: boolean;
+  canCreate: boolean;
+  createRoles: UserRole[];
+  draft: UserDraft;
+  isOpen: boolean;
+  message: string;
+  setDraft: (draft: UserDraft) => void;
+  onClose: () => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  if (!isOpen) return null;
+
+  return (
+    <Modal title="Add new user" onClose={onClose}>
+      {canCreate ? (
+        <form className="grid gap-4" onSubmit={onSubmit}>
+          <label className="field">
+            <span>Name</span>
+            <input className="input min-h-[46px]" value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} required />
+          </label>
+          <label className="field">
+            <span>Email</span>
+            <input className="input min-h-[46px]" type="email" value={draft.email} onChange={(event) => setDraft({ ...draft, email: event.target.value })} required />
+          </label>
+          <label className="field">
+            <span>Password</span>
+            <input className="input min-h-[46px]" type="password" value={draft.password} onChange={(event) => setDraft({ ...draft, password: event.target.value })} minLength={6} required />
+          </label>
+          <label className="field">
+            <span>Role</span>
+            <select className="input min-h-[46px]" value={draft.role} onChange={(event) => setDraft({ ...draft, role: event.target.value as UserRole })}>
+              {createRoles.map((role) => <option key={role} value={role}>{roleLabels[role]}</option>)}
+            </select>
+          </label>
+          <label className="field">
+            <span>Status</span>
+            <select className="input min-h-[46px]" value={draft.status} onChange={(event) => setDraft({ ...draft, status: event.target.value as UserStatus })}>
+              <option value="active">active</option>
+              <option value="disabled">disabled</option>
+            </select>
+          </label>
+          <div className="flex items-center justify-between gap-3 pt-2">
+            <p className="text-sm text-[#65728a]">{message}</p>
+            <div className="flex gap-2">
+              <button className="btn-secondary" type="button" onClick={onClose}>Cancel</button>
+              <button className="btn-primary" disabled={busy} type="submit">{busy ? "Working..." : "Create user"}</button>
+            </div>
+          </div>
+        </form>
+      ) : (
+        <div className="grid gap-4">
+          <p className="text-sm text-[#667085]">Your account can review user access, but cannot create users.</p>
+          <div className="flex justify-end">
+            <button className="btn-secondary" type="button" onClick={onClose}>Close</button>
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+function Modal({ children, title, onClose }: { children: ReactNode; title: string; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-[#0f172a]/35 px-4 py-6">
+      <section className="w-full max-w-[560px] rounded-[8px] border border-[#d7dfeb] bg-white shadow-[0_24px_70px_rgba(16,24,40,0.22)]">
+        <div className="flex items-center justify-between border-b border-[#d7dfeb] px-6 py-4">
+          <h2 className="text-xl font-semibold text-[#070c11]">{title}</h2>
+          <button className="btn-secondary h-9 w-9 px-0 py-0 text-lg" type="button" aria-label="Close dialog" onClick={onClose}>×</button>
+        </div>
+        <div className="p-6">{children}</div>
+      </section>
+    </div>
   );
 }
 

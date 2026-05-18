@@ -37,6 +37,12 @@ select {
   font: inherit;
 }
 
+button:not(:disabled),
+a[href],
+[role="button"]:not(:disabled) {
+  cursor: pointer;
+}
+
 select.input {
   appearance: none;
   -webkit-appearance: none;
