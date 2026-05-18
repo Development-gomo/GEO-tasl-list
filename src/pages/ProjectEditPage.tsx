@@ -6,6 +6,7 @@ import { DashboardLayout } from "@/components/DashboardLayout";
 import { useAuth } from "@/context/AuthContext";
 import { db } from "@/lib/firebase";
 import { deleteProject, updateProjectBasics } from "@/lib/firestore";
+import { formatLoadError } from "@/lib/loadError";
 import type { DirectoryTeamMember, Project, TeamMember } from "@/types";
 
 const labelClass = "grid gap-2 text-sm font-semibold text-[#475467]";
@@ -19,7 +20,7 @@ type ProjectFormState = {
 
 export function ProjectEditPage() {
   const navigate = useNavigate();
-  const { profile } = useAuth();
+  const { clearLoadError, profile, reportLoadError } = useAuth();
   const { projectId = "" } = useParams();
   const [project, setProject] = useState<Project | null | undefined>(undefined);
   const [directoryMembers, setDirectoryMembers] = useState<DirectoryTeamMember[]>([]);
@@ -37,6 +38,7 @@ export function ProjectEditPage() {
   useEffect(() => {
     if (!projectId) return undefined;
     const unsubscribe = onSnapshot(doc(db, "projects", projectId), (snapshot) => {
+      clearLoadError("project-edit");
       if (!snapshot.exists()) {
         setProject(null);
         return;
@@ -49,20 +51,26 @@ export function ProjectEditPage() {
         status: nextProject.status || "active",
         description: nextProject.description || "",
       });
+    }, (error) => {
+      reportLoadError("project-edit", formatLoadError("Project details", error));
     });
     return unsubscribe;
-  }, [projectId]);
+  }, [clearLoadError, projectId, reportLoadError]);
 
   useEffect(() => {
     const unsubscribe = onSnapshot(query(collection(db, "teamMembers"), orderBy("name")), (snapshot) => {
+      clearLoadError("project-edit-directory");
       setDirectoryMembers(snapshot.docs.map((item) => ({ id: item.id, ...item.data() }) as DirectoryTeamMember));
+    }, (error) => {
+      reportLoadError("project-edit-directory", formatLoadError("Team member directory", error));
     });
     return unsubscribe;
-  }, []);
+  }, [clearLoadError, reportLoadError]);
 
   useEffect(() => {
     if (!projectId || !directoryMembers.length) return undefined;
     const unsubscribe = onSnapshot(query(collection(db, "projects", projectId, "teamMembers"), orderBy("name")), (snapshot) => {
+      clearLoadError("project-edit-members");
       const projectMembers = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }) as TeamMember);
       setDraftMembers(
         projectMembers.map((member) => {
@@ -77,9 +85,11 @@ export function ProjectEditPage() {
           };
         }),
       );
+    }, (error) => {
+      reportLoadError("project-edit-members", formatLoadError("Project team members", error));
     });
     return unsubscribe;
-  }, [directoryMembers, projectId]);
+  }, [clearLoadError, directoryMembers, projectId, reportLoadError]);
 
   const availableMembers = useMemo(
     () => directoryMembers.filter((member) => !draftMembers.some((draftMember) => draftMember.id === member.id)),

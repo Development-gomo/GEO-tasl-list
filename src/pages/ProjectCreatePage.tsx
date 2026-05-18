@@ -6,6 +6,7 @@ import { DashboardLayout } from "@/components/DashboardLayout";
 import { useAuth } from "@/context/AuthContext";
 import { db } from "@/lib/firebase";
 import { createProjectFromDirectory } from "@/lib/firestore";
+import { formatLoadError } from "@/lib/loadError";
 import type { DirectoryTeamMember, Project } from "@/types";
 
 const labelClass = "grid gap-2 text-sm font-semibold text-[#475467]";
@@ -19,7 +20,7 @@ type ProjectCreateFormState = {
 
 export function ProjectCreatePage() {
   const navigate = useNavigate();
-  const { firebaseUser } = useAuth();
+  const { clearLoadError, firebaseUser, reportLoadError } = useAuth();
   const [directoryMembers, setDirectoryMembers] = useState<DirectoryTeamMember[]>([]);
   const [draftMembers, setDraftMembers] = useState<DirectoryTeamMember[]>([]);
   const [selectedMemberId, setSelectedMemberId] = useState("");
@@ -32,10 +33,13 @@ export function ProjectCreatePage() {
 
   useEffect(() => {
     const unsubscribe = onSnapshot(query(collection(db, "teamMembers"), orderBy("name")), (snapshot) => {
+      clearLoadError("project-create-team-members");
       setDirectoryMembers(snapshot.docs.map((item) => ({ id: item.id, ...item.data() }) as DirectoryTeamMember));
+    }, (error) => {
+      reportLoadError("project-create-team-members", formatLoadError("Team member directory", error));
     });
     return unsubscribe;
-  }, []);
+  }, [clearLoadError, reportLoadError]);
 
   const availableMembers = useMemo(
     () => directoryMembers.filter((member) => !draftMembers.some((draftMember) => draftMember.id === member.id)),

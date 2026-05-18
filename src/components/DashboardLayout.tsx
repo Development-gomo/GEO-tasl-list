@@ -92,9 +92,13 @@ export function DashboardLayout({
   description: string;
   actions?: React.ReactNode;
 }) {
-  const { logout } = useAuth();
+  const { loadError, logout } = useAuth();
   const { pathname } = useLocation();
   const isProjects = pathname.startsWith("/projects");
+  const statusLabel = loadError || "System Healthy";
+  const statusDotClass = loadError
+    ? "mt-[7px] h-2.5 w-2.5 rounded-full bg-[#f04438] shadow-[0_0_0_6px_rgba(240,68,56,0.12)]"
+    : "mt-[7px] h-2.5 w-2.5 rounded-full bg-[#17b26a] shadow-[0_0_0_6px_rgba(23,178,106,0.12)]";
 
   return (
     <main className="grid h-screen overflow-hidden md:grid-cols-[255px_minmax(0,1fr)]">
@@ -135,11 +139,10 @@ export function DashboardLayout({
           </div>
 
           <div className="border-t border-[#d7dfeb] px-6 py-3.5">
-            <div className="flex items-start gap-3 text-[#475467]">
-              <span className="mt-[7px] h-2.5 w-2.5 rounded-full bg-[#17b26a] shadow-[0_0_0_6px_rgba(23,178,106,0.12)]" />
-            <div>
-                <strong className="mb-1 block text-sm font-semibold text-[#070c11]">System Healthy</strong>
-                <p className="m-0 text-sm text-[#667085]">Workspace data syncs with Firestore when Firebase is configured.</p>
+            <div className="flex items-start gap-3 text-[#475467]" title={loadError || statusLabel}>
+              <span className={statusDotClass} />
+              <div>
+                <strong className="block text-sm font-semibold text-[#070c11]">{statusLabel}</strong>
               </div>
             </div>
 

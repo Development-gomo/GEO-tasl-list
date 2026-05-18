@@ -5,12 +5,15 @@ import { AuthGuard } from "@/components/AuthGuard";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { ProgressSummary } from "@/components/ProgressSummary";
 import { TaskTableEditor } from "@/components/TaskTableEditor";
+import { useAuth } from "@/context/AuthContext";
 import { db } from "@/lib/firebase";
 import { updateProjectActivePlan } from "@/lib/firestore";
+import { formatLoadError } from "@/lib/loadError";
 import type { PlanType, Project } from "@/types";
 
 export function ProjectPage() {
   const { projectId = "" } = useParams();
+  const { clearLoadError, reportLoadError } = useAuth();
   const [project, setProject] = useState<Project | null>(null);
   const [planType, setPlanType] = useState<PlanType>("30");
   const hydratedProjectIdRef = useRef("");
@@ -19,6 +22,7 @@ export function ProjectPage() {
     if (!projectId) return undefined;
     hydratedProjectIdRef.current = "";
     const unsubscribe = onSnapshot(doc(db, "projects", projectId), (snapshot) => {
+      clearLoadError("project-detail");
       if (!snapshot.exists()) {
         setProject(null);
         return;
@@ -29,9 +33,11 @@ export function ProjectPage() {
         setPlanType(nextProject.activePlanType || "30");
         hydratedProjectIdRef.current = snapshot.id;
       }
+    }, (error) => {
+      reportLoadError("project-detail", formatLoadError("Project details", error));
     });
     return unsubscribe;
-  }, [projectId]);
+  }, [clearLoadError, projectId, reportLoadError]);
 
   async function handlePlanSelect(type: PlanType) {
     setPlanType(type);

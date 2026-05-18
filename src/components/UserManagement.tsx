@@ -2,6 +2,7 @@ import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
 import { FormEvent, ReactNode, useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { db } from "@/lib/firebase";
+import { formatLoadError } from "@/lib/loadError";
 import { createManagedUser, deleteManagedUser, updateManagedUser, userAdminError } from "@/lib/userAdmin";
 import type { UserProfile, UserRole, UserStatus } from "@/types";
 
@@ -48,7 +49,7 @@ function canDeleteUser(currentRole: UserRole | undefined, target: UserProfile, c
 }
 
 export function UserManagement() {
-  const { profile } = useAuth();
+  const { clearLoadError, profile, reportLoadError } = useAuth();
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [draft, setDraft] = useState<UserDraft>(emptyDraft);
   const [editing, setEditing] = useState<UserProfile | null>(null);
@@ -59,10 +60,13 @@ export function UserManagement() {
 
   useEffect(() => {
     const unsubscribe = onSnapshot(query(collection(db, "users"), orderBy("name")), (snapshot) => {
+      clearLoadError("user-management");
       setUsers(snapshot.docs.map((item) => ({ uid: item.id, ...item.data() }) as UserProfile));
+    }, (error) => {
+      reportLoadError("user-management", formatLoadError("User management", error));
     });
     return unsubscribe;
-  }, []);
+  }, [clearLoadError, reportLoadError]);
 
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

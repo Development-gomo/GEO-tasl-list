@@ -6,7 +6,7 @@ import {
 } from "firebase/auth";
 import { FirebaseError } from "firebase/app";
 import { doc, getDoc } from "firebase/firestore";
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { auth, db } from "@/lib/firebase";
 import type { UserProfile } from "@/types";
@@ -16,6 +16,9 @@ type AuthContextValue = {
   profile: UserProfile | null;
   loading: boolean;
   error: string;
+  loadError: string;
+  reportLoadError: (source: string, message: string) => void;
+  clearLoadError: (source: string) => void;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -36,7 +39,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [loadErrors, setLoadErrors] = useState<Record<string, string>>({});
   const navigate = useNavigate();
+  const loadError = Object.values(loadErrors)[0] || "";
+
+  const reportLoadError = useCallback((source: string, message: string) => {
+    setLoadErrors((current) => ({ ...current, [source]: message }));
+  }, []);
+
+  const clearLoadError = useCallback((source: string) => {
+    setLoadErrors((current) => {
+      if (!current[source]) return current;
+      const next = { ...current };
+      delete next[source];
+      return next;
+    });
+  }, []);
 
   async function refreshProfile() {
     if (!auth.currentUser) {
@@ -105,11 +123,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   async function logout() {
     await signOut(auth);
     setProfile(null);
+    setLoadErrors({});
     navigate("/login");
   }
 
   return (
-    <AuthContext.Provider value={{ firebaseUser, profile, loading, error, login, logout, refreshProfile }}>
+    <AuthContext.Provider value={{ firebaseUser, profile, loading, error, loadError, reportLoadError, clearLoadError, login, logout, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );

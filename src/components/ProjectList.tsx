@@ -1,8 +1,10 @@
 import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { useAuth } from "@/context/AuthContext";
 import { db } from "@/lib/firebase";
 import { templateTasks } from "@/lib/geo";
+import { formatLoadError } from "@/lib/loadError";
 import type { PlanType, Project } from "@/types";
 
 type ProjectFilter = "active" | "completed" | "upcoming";
@@ -16,15 +18,19 @@ const statToneClasses: Record<StatTone, string> = {
 };
 
 export function ProjectList() {
+  const { clearLoadError, reportLoadError } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
   const [filter, setFilter] = useState<ProjectFilter>("active");
 
   useEffect(() => {
     const unsubscribe = onSnapshot(query(collection(db, "projects"), orderBy("updatedAt", "desc")), (snapshot) => {
+      clearLoadError("projects");
       setProjects(snapshot.docs.map((item) => ({ id: item.id, ...item.data() }) as Project));
+    }, (error) => {
+      reportLoadError("projects", formatLoadError("Projects", error));
     });
     return unsubscribe;
-  }, []);
+  }, [clearLoadError, reportLoadError]);
 
   const projectStatus = (project: Project): ProjectFilter => {
     if (project.status === "completed" || (project.progress?.[project.activePlanType || "30"]?.pct || 0) >= 100) return "completed";

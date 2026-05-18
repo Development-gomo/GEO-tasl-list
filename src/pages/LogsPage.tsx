@@ -5,6 +5,7 @@ import { DashboardLayout } from "@/components/DashboardLayout";
 import { useAuth } from "@/context/AuthContext";
 import { deleteAuditLog } from "@/lib/auditLog";
 import { db } from "@/lib/firebase";
+import { formatLoadError } from "@/lib/loadError";
 import type { AuditLog, AuditLogDetail, DirectoryTeamMember, Project, UserProfile } from "@/types";
 
 const inputClass = "input w-full px-[14px] py-3";
@@ -62,7 +63,7 @@ function buildLogTooltip(log: AuditLog, resolvedUserName: string) {
 }
 
 export function LogsPage() {
-  const { profile } = useAuth();
+  const { clearLoadError, profile, reportLoadError } = useAuth();
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
@@ -81,16 +82,28 @@ export function LogsPage() {
 
   useEffect(() => {
     const unsubscribeLogs = onSnapshot(query(collection(db, "logs"), orderBy("createdAt", "desc")), (snapshot) => {
+      clearLoadError("logs");
       setLogs(snapshot.docs.map((item) => ({ id: item.id, ...item.data() }) as AuditLog));
+    }, (error) => {
+      reportLoadError("logs", formatLoadError("Logs", error));
     });
     const unsubscribeProjects = onSnapshot(collection(db, "projects"), (snapshot) => {
+      clearLoadError("logs-projects");
       setProjects(snapshot.docs.map((item) => ({ id: item.id, ...item.data() }) as Project));
+    }, (error) => {
+      reportLoadError("logs-projects", formatLoadError("Projects", error));
     });
     const unsubscribeUsers = onSnapshot(collection(db, "users"), (snapshot) => {
+      clearLoadError("logs-users");
       setUsers(snapshot.docs.map((item) => ({ uid: item.id, ...item.data() }) as UserProfile));
+    }, (error) => {
+      reportLoadError("logs-users", formatLoadError("Users", error));
     });
     const unsubscribeMembers = onSnapshot(collection(db, "teamMembers"), (snapshot) => {
+      clearLoadError("logs-team-members");
       setTeamMembers(snapshot.docs.map((item) => ({ id: item.id, ...item.data() }) as DirectoryTeamMember));
+    }, (error) => {
+      reportLoadError("logs-team-members", formatLoadError("Team members", error));
     });
     return () => {
       unsubscribeLogs();
@@ -98,7 +111,7 @@ export function LogsPage() {
       unsubscribeUsers();
       unsubscribeMembers();
     };
-  }, []);
+  }, [clearLoadError, reportLoadError]);
 
   useEffect(() => {
     if (!selectedLog) return undefined;

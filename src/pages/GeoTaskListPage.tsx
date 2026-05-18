@@ -2,6 +2,7 @@ import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
 import { AuthGuard } from "@/components/AuthGuard";
 import { DashboardLayout } from "@/components/DashboardLayout";
+import { useAuth } from "@/context/AuthContext";
 import { db } from "@/lib/firebase";
 import {
   addGeoTaskListTask,
@@ -14,6 +15,7 @@ import {
   updateGeoTaskListTask,
 } from "@/lib/firestore";
 import { OWNER_ROLES, phaseTitle } from "@/lib/geo";
+import { formatLoadError } from "@/lib/loadError";
 import type { Phase, PlanType, Task } from "@/types";
 
 type StatTone = "green" | "blue" | "amber" | "red";
@@ -35,6 +37,7 @@ const planTabs: { id: PlanType; label: string }[] = [
 ];
 
 export function GeoTaskListPage() {
+  const { clearLoadError, reportLoadError } = useAuth();
   const [activePlan, setActivePlan] = useState<PlanType>("30");
   const [projectsCount, setProjectsCount] = useState(0);
   const [geoTaskListCounts, setGeoTaskListCounts] = useState<Record<PlanType, number>>({ "30": 0, "60": 0, "90": 0 });
@@ -43,27 +46,35 @@ export function GeoTaskListPage() {
 
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, "projects"), (snapshot) => {
+      clearLoadError("geo-task-list-projects");
       setProjectsCount(snapshot.size);
+    }, (error) => {
+      reportLoadError("geo-task-list-projects", formatLoadError("Projects", error));
     });
     return unsubscribe;
-  }, []);
+  }, [clearLoadError, reportLoadError]);
 
   useEffect(() => {
     let cancelled = false;
     async function loadCounts() {
-      const plans = await Promise.all(planTabs.map((tab) => getEditableGeoTaskListPlan(tab.id)));
-      if (cancelled) return;
-      setGeoTaskListCounts({
-        "30": plans.find((plan) => plan.planType === "30")?.phases.reduce((total, phase) => total + phase.tasks.length, 0) || 0,
-        "60": plans.find((plan) => plan.planType === "60")?.phases.reduce((total, phase) => total + phase.tasks.length, 0) || 0,
-        "90": plans.find((plan) => plan.planType === "90")?.phases.reduce((total, phase) => total + phase.tasks.length, 0) || 0,
-      });
+      try {
+        const plans = await Promise.all(planTabs.map((tab) => getEditableGeoTaskListPlan(tab.id)));
+        if (cancelled) return;
+        clearLoadError("geo-task-list-counts");
+        setGeoTaskListCounts({
+          "30": plans.find((plan) => plan.planType === "30")?.phases.reduce((total, phase) => total + phase.tasks.length, 0) || 0,
+          "60": plans.find((plan) => plan.planType === "60")?.phases.reduce((total, phase) => total + phase.tasks.length, 0) || 0,
+          "90": plans.find((plan) => plan.planType === "90")?.phases.reduce((total, phase) => total + phase.tasks.length, 0) || 0,
+        });
+      } catch (error) {
+        if (!cancelled) reportLoadError("geo-task-list-counts", formatLoadError("GEO task list counts", error));
+      }
     }
     loadCounts();
     return () => {
       cancelled = true;
     };
-  }, [activePlan, phases]);
+  }, [activePlan, clearLoadError, phases, reportLoadError]);
 
   useEffect(() => {
     let taskUnsubscribers: (() => void)[] = [];
@@ -72,9 +83,15 @@ export function GeoTaskListPage() {
 
     async function subscribeToPlan() {
       setPhases([]);
-      await ensureEditableGeoTaskListPlan(activePlan);
+      try {
+        await ensureEditableGeoTaskListPlan(activePlan);
+      } catch (error) {
+        reportLoadError("geo-task-list-plan", formatLoadError("GEO task list", error));
+        return;
+      }
       if (cancelled) return;
       phaseUnsubscribe = onSnapshot(query(geoTaskListPhasesRef(activePlan), orderBy("order")), (snapshot) => {
+        clearLoadError("geo-task-list-plan");
         taskUnsubscribers.forEach((unsubscribe) => unsubscribe());
         taskUnsubscribers = [];
         const nextPhases = snapshot.docs.map((item) => {
@@ -91,12 +108,17 @@ export function GeoTaskListPage() {
         setPhases(nextPhases);
         taskUnsubscribers = nextPhases.map((phase) =>
           onSnapshot(query(geoTaskListTasksRef(activePlan, phase.id), orderBy("number")), (taskSnapshot) => {
+            clearLoadError(`geo-task-list-tasks-${phase.id}`);
             const tasks = taskSnapshot.docs.map((item) => ({ id: item.id, ...item.data(), phaseId: phase.id, phaseOrder: phase.order }) as Task);
             setPhases((current) =>
               current.map((currentPhase) => (currentPhase.id === phase.id ? { ...currentPhase, tasks } : currentPhase)),
             );
+          }, (error) => {
+            reportLoadError(`geo-task-list-tasks-${phase.id}`, formatLoadError("GEO task list tasks", error));
           }),
         );
+      }, (error) => {
+        reportLoadError("geo-task-list-plan", formatLoadError("GEO task list phases", error));
       });
     }
 
@@ -106,7 +128,7 @@ export function GeoTaskListPage() {
       phaseUnsubscribe?.();
       taskUnsubscribers.forEach((unsubscribe) => unsubscribe());
     };
-  }, [activePlan]);
+  }, [activePlan, clearLoadError, reportLoadError]);
 
   const tasks = useMemo(
     () => phases.flatMap((phase) => phase.tasks.map((task) => ({ ...task, phaseTitle: phaseTitle(phase), phaseId: phase.id }))),

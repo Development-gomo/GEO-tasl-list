@@ -6,12 +6,13 @@ import { db } from "@/lib/firebase";
 import { phaseTitle, progressForTasks } from "@/lib/geo";
 import { recordImportExport, updatePlanProgress, updateTask } from "@/lib/firestore";
 import { useAuth } from "@/context/AuthContext";
+import { formatLoadError } from "@/lib/loadError";
 import type { Phase, PlanType, Task, TeamMember } from "@/types";
 
 const statuses = ["To Do", "In Progress", "Blocked", "Done"] as const;
 
 export function TaskTableEditor({ projectId, planType, disabled = false }: { projectId: string; planType: PlanType; disabled?: boolean }) {
-  const { firebaseUser } = useAuth();
+  const { clearLoadError, firebaseUser, reportLoadError } = useAuth();
   const [phases, setPhases] = useState<Phase[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [members, setMembers] = useState<TeamMember[]>([]);
@@ -27,10 +28,13 @@ export function TaskTableEditor({ projectId, planType, disabled = false }: { pro
   useEffect(() => {
     if (disabled) return;
     const unsubscribe = onSnapshot(query(collection(db, "projects", projectId, "plans", planType, "phases"), orderBy("order")), (snapshot) => {
+      clearLoadError("project-task-phases");
       setPhases(snapshot.docs.map((item) => ({ id: item.id, ...item.data() }) as Phase));
+    }, (error) => {
+      reportLoadError("project-task-phases", formatLoadError("Project task phases", error));
     });
     return unsubscribe;
-  }, [disabled, planType, projectId]);
+  }, [clearLoadError, disabled, planType, projectId, reportLoadError]);
 
   useEffect(() => {
     if (disabled || !phases.length) {
@@ -39,22 +43,28 @@ export function TaskTableEditor({ projectId, planType, disabled = false }: { pro
     }
     const unsubscribers = phases.map((phase) =>
       onSnapshot(query(collection(db, "projects", projectId, "plans", planType, "phases", phase.id, "tasks"), orderBy("number")), (snapshot) => {
+        clearLoadError(`project-tasks-${phase.id}`);
         const phaseTasks = snapshot.docs.map((item) => ({ id: item.id, phaseId: phase.id, phaseOrder: phase.order, ...item.data() }) as Task);
         setTasks((current) => {
           const other = current.filter((task) => task.phaseId !== phase.id);
           return [...other, ...phaseTasks].sort((a, b) => a.phaseOrder - b.phaseOrder || Number(a.number) - Number(b.number));
         });
+      }, (error) => {
+        reportLoadError(`project-tasks-${phase.id}`, formatLoadError("Project tasks", error));
       }),
     );
     return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
-  }, [disabled, phases, planType, projectId]);
+  }, [clearLoadError, disabled, phases, planType, projectId, reportLoadError]);
 
   useEffect(() => {
     const unsubscribe = onSnapshot(query(collection(db, "projects", projectId, "teamMembers"), orderBy("name")), (snapshot) => {
+      clearLoadError("project-task-members");
       setMembers(snapshot.docs.map((item) => ({ id: item.id, ...item.data() }) as TeamMember));
+    }, (error) => {
+      reportLoadError("project-task-members", formatLoadError("Project team members", error));
     });
     return unsubscribe;
-  }, [projectId]);
+  }, [clearLoadError, projectId, reportLoadError]);
 
   useEffect(() => {
     if (!disabled && tasks.length) updatePlanProgress(projectId, planType, tasks);

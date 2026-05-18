@@ -1,6 +1,8 @@
 import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
 import { FormEvent, useEffect, useState } from "react";
+import { useAuth } from "@/context/AuthContext";
 import { db } from "@/lib/firebase";
+import { formatLoadError } from "@/lib/loadError";
 import { createDirectoryTeamMember, updateDirectoryTeamMember, type TeamMemberDraft } from "@/lib/teamDirectory";
 import type { DirectoryTeamMember } from "@/types";
 
@@ -26,6 +28,7 @@ const departmentOptions = [
 ];
 
 export function TeamDirectory() {
+  const { clearLoadError, reportLoadError } = useAuth();
   const [members, setMembers] = useState<DirectoryTeamMember[]>([]);
   const [draft, setDraft] = useState<TeamMemberDraft>(emptyDraft);
   const [editing, setEditing] = useState<DirectoryTeamMember | null>(null);
@@ -34,10 +37,13 @@ export function TeamDirectory() {
 
   useEffect(() => {
     const unsubscribe = onSnapshot(query(collection(db, "teamMembers"), orderBy("name")), (snapshot) => {
+      clearLoadError("team-directory");
       setMembers(snapshot.docs.map((item) => ({ id: item.id, ...item.data() }) as DirectoryTeamMember));
+    }, (error) => {
+      reportLoadError("team-directory", formatLoadError("Team directory", error));
     });
     return unsubscribe;
-  }, []);
+  }, [clearLoadError, reportLoadError]);
 
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
