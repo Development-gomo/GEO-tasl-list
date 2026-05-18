@@ -29,6 +29,10 @@ service cloud.firestore {
       return adminUser() || superAdminUser();
     }
 
+    function geoTaskListWriteUser() {
+      return adminUser() || superAdminUser();
+    }
+
     function validUserRole(role) {
       return role in ["user", "admin", "super_admin"];
     }
@@ -140,16 +144,20 @@ service cloud.firestore {
     }
 
     match /geoTaskLists/{taskListId} {
-      allow read, write: if activeUser();
+      allow read: if activeUser();
+      allow write: if geoTaskListWriteUser();
 
       match /plans/{planId} {
-        allow read, write: if activeUser();
+        allow read: if activeUser();
+        allow write: if geoTaskListWriteUser();
 
         match /phases/{phaseId} {
-          allow read, write: if activeUser();
+          allow read: if activeUser();
+          allow write: if geoTaskListWriteUser();
 
           match /tasks/{taskId} {
-            allow read, write: if activeUser();
+            allow read: if activeUser();
+            allow write: if geoTaskListWriteUser();
           }
         }
       }

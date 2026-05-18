@@ -8,6 +8,7 @@ import {
   addGeoTaskListTask,
   deleteGeoTaskListTask,
   ensureEditableGeoTaskListPlan,
+  getGeoTaskListPlan,
   geoTaskListPhasesRef,
   geoTaskListTasksRef,
   getEditableGeoTaskListPlan,
@@ -37,14 +38,16 @@ const planTabs: { id: PlanType; label: string }[] = [
 ];
 
 export function GeoTaskListPage() {
-  const { clearLoadError, reportLoadError } = useAuth();
+  const { clearLoadError, profile, reportLoadError } = useAuth();
   const [activePlan, setActivePlan] = useState<PlanType>("30");
   const [projectsCount, setProjectsCount] = useState(0);
   const [geoTaskListCounts, setGeoTaskListCounts] = useState<Record<PlanType, number>>({ "30": 0, "60": 0, "90": 0 });
   const [phases, setPhases] = useState<GeoTaskListPhase[]>([]);
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
+  const canEditTemplate = profile?.role === "admin" || profile?.role === "super_admin";
 
   useEffect(() => {
+    if (!profile) return;
     const unsubscribe = onSnapshot(collection(db, "projects"), (snapshot) => {
       clearLoadError("geo-task-list-projects");
       setProjectsCount(snapshot.size);
@@ -52,13 +55,15 @@ export function GeoTaskListPage() {
       reportLoadError("geo-task-list-projects", formatLoadError("Projects", error));
     });
     return unsubscribe;
-  }, [clearLoadError, reportLoadError]);
+  }, [clearLoadError, profile, reportLoadError]);
 
   useEffect(() => {
+    if (!profile) return;
     let cancelled = false;
     async function loadCounts() {
       try {
-        const plans = await Promise.all(planTabs.map((tab) => getEditableGeoTaskListPlan(tab.id)));
+        const planLoader = canEditTemplate ? getEditableGeoTaskListPlan : getGeoTaskListPlan;
+        const plans = await Promise.all(planTabs.map((tab) => planLoader(tab.id)));
         if (cancelled) return;
         clearLoadError("geo-task-list-counts");
         setGeoTaskListCounts({
@@ -74,9 +79,10 @@ export function GeoTaskListPage() {
     return () => {
       cancelled = true;
     };
-  }, [activePlan, clearLoadError, phases, reportLoadError]);
+  }, [activePlan, canEditTemplate, clearLoadError, phases, profile, reportLoadError]);
 
   useEffect(() => {
+    if (!profile) return;
     let taskUnsubscribers: (() => void)[] = [];
     let phaseUnsubscribe: (() => void) | undefined;
     let cancelled = false;
@@ -84,7 +90,7 @@ export function GeoTaskListPage() {
     async function subscribeToPlan() {
       setPhases([]);
       try {
-        await ensureEditableGeoTaskListPlan(activePlan);
+        if (canEditTemplate) await ensureEditableGeoTaskListPlan(activePlan);
       } catch (error) {
         reportLoadError("geo-task-list-plan", formatLoadError("GEO task list", error));
         return;
@@ -128,7 +134,7 @@ export function GeoTaskListPage() {
       phaseUnsubscribe?.();
       taskUnsubscribers.forEach((unsubscribe) => unsubscribe());
     };
-  }, [activePlan, clearLoadError, reportLoadError]);
+  }, [activePlan, canEditTemplate, clearLoadError, profile, reportLoadError]);
 
   const tasks = useMemo(
     () => phases.flatMap((phase) => phase.tasks.map((task) => ({ ...task, phaseTitle: phaseTitle(phase), phaseId: phase.id }))),
@@ -138,11 +144,12 @@ export function GeoTaskListPage() {
   const activePlanPhases = phases.length;
 
   async function patchTask(task: Task, field: keyof Task, value: string) {
+    if (!canEditTemplate) return;
     await updateGeoTaskListTask(activePlan, { ...task, [field]: value });
   }
 
   async function handleReorder(sourceTaskId: string | null, targetTask: Task) {
-    if (!sourceTaskId || sourceTaskId === targetTask.id) return;
+    if (!canEditTemplate || !sourceTaskId || sourceTaskId === targetTask.id) return;
     const phase = phases.find((item) => item.id === targetTask.phaseId);
     const sourceTask = phase?.tasks.find((task) => task.id === sourceTaskId);
     if (!phase || !sourceTask) return;
@@ -151,6 +158,16 @@ export function GeoTaskListPage() {
     const targetIndex = withoutSource.findIndex((task) => task.id === targetTask.id);
     const reorderedTasks = [...withoutSource.slice(0, targetIndex), sourceTask, ...withoutSource.slice(targetIndex)];
     await reorderGeoTaskListTasks(activePlan, phase.id, reorderedTasks);
+  }
+
+  async function handleAddTask() {
+    if (!canEditTemplate) return;
+    await addGeoTaskListTask(activePlan);
+  }
+
+  async function handleDeleteTask(task: Task) {
+    if (!canEditTemplate) return;
+    await deleteGeoTaskListTask(activePlan, task);
   }
 
   return (
@@ -171,6 +188,11 @@ export function GeoTaskListPage() {
             <div className="mb-3.5 flex flex-col justify-between gap-4 xl:flex-row xl:items-center">
               <h3 className="text-lg font-semibold text-[#070c11]">GEO Task List</h3>
               <div className="flex flex-wrap items-center justify-end gap-3">
+                {!canEditTemplate ? (
+                  <span className="rounded-[8px] border border-[#d7dfeb] bg-[#f8fafc] px-3 py-2 text-sm font-semibold text-[#667085]">
+                    View only
+                  </span>
+                ) : null}
                 <div className="inline-flex items-center gap-1 rounded-[8px] border border-[#d7dfeb] bg-white p-[5px]" aria-label="GEO task list plan filter">
                   {planTabs.map((tab) => (
                     <button
@@ -187,7 +209,7 @@ export function GeoTaskListPage() {
                     </button>
                   ))}
                 </div>
-                <button className="btn-primary px-4 py-2.5" type="button" onClick={() => addGeoTaskListTask(activePlan)}>
+                <button className="btn-primary px-4 py-2.5 disabled:cursor-not-allowed disabled:opacity-60" disabled={!canEditTemplate} type="button" onClick={handleAddTask}>
                   Add Task
                 </button>
               </div>
@@ -210,10 +232,12 @@ export function GeoTaskListPage() {
                   ].join(" ")}
                   key={`${task.phaseId}-${task.id}`}
                   onDragOver={(event) => {
+                    if (!canEditTemplate) return;
                     event.preventDefault();
                     event.dataTransfer.dropEffect = "move";
                   }}
                   onDrop={(event) => {
+                    if (!canEditTemplate) return;
                     event.preventDefault();
                     const sourceTaskId = event.dataTransfer.getData("text/plain") || draggedTaskId;
                     handleReorder(sourceTaskId, task);
@@ -222,11 +246,11 @@ export function GeoTaskListPage() {
                 >
                   <div className="rounded-[8px] bg-[#f2f4f7] px-3 py-2 text-sm font-bold text-[#475467]">{task.phaseTitle}</div>
                   <div className="grid gap-3">
-                    <input className={`${inputClass} text-[15px] font-semibold`} value={task.task} onChange={(event) => patchTask(task, "task", event.target.value)} placeholder="Task title" />
-                    <textarea className={`${inputClass} min-h-[160px] resize-y font-mono leading-6`} value={task.howToExecute || ""} onChange={(event) => patchTask(task, "howToExecute", event.target.value)} placeholder="Task description" />
+                    <input className={`${inputClass} text-[15px] font-semibold disabled:cursor-not-allowed disabled:bg-[#f8fafc]`} disabled={!canEditTemplate} value={task.task} onChange={(event) => patchTask(task, "task", event.target.value)} placeholder="Task title" />
+                    <textarea className={`${inputClass} min-h-[160px] resize-y font-mono leading-6 disabled:cursor-not-allowed disabled:bg-[#f8fafc]`} disabled={!canEditTemplate} value={task.howToExecute || ""} onChange={(event) => patchTask(task, "howToExecute", event.target.value)} placeholder="Task description" />
                     <div className="grid gap-3 md:grid-cols-2">
-                      <input className={inputClass} value={task.tools || ""} onChange={(event) => patchTask(task, "tools", event.target.value)} placeholder="Tools" />
-                      <select className={inputClass} value={task.dependencyNotes || ""} onChange={(event) => patchTask(task, "dependencyNotes", event.target.value)}>
+                      <input className={`${inputClass} disabled:cursor-not-allowed disabled:bg-[#f8fafc]`} disabled={!canEditTemplate} value={task.tools || ""} onChange={(event) => patchTask(task, "tools", event.target.value)} placeholder="Tools" />
+                      <select className={`${inputClass} disabled:cursor-not-allowed disabled:bg-[#f8fafc]`} disabled={!canEditTemplate} value={task.dependencyNotes || ""} onChange={(event) => patchTask(task, "dependencyNotes", event.target.value)}>
                         <option value="">No dependency</option>
                         {tasks
                           .filter((dependencyTask) => dependencyTask.id !== task.id || dependencyTask.phaseId !== task.phaseId)
@@ -238,18 +262,20 @@ export function GeoTaskListPage() {
                       </select>
                     </div>
                   </div>
-                  <select className={inputClass} value={task.owner || ""} onChange={(event) => patchTask(task, "owner", event.target.value)}>
+                  <select className={`${inputClass} disabled:cursor-not-allowed disabled:bg-[#f8fafc]`} disabled={!canEditTemplate} value={task.owner || ""} onChange={(event) => patchTask(task, "owner", event.target.value)}>
                     <option value="">Select owner / dept</option>
                     {OWNER_ROLES.map((role) => <option key={role}>{role}</option>)}
                   </select>
-                  <input className={inputClass} value={task.dayTarget || ""} onChange={(event) => patchTask(task, "dayTarget", event.target.value)} placeholder="Day 1" />
+                  <input className={`${inputClass} disabled:cursor-not-allowed disabled:bg-[#f8fafc]`} disabled={!canEditTemplate} value={task.dayTarget || ""} onChange={(event) => patchTask(task, "dayTarget", event.target.value)} placeholder="Day 1" />
                   <div className="flex items-center justify-center gap-2">
                     <button
                       aria-label={`Reorder ${task.task || "task"}`}
-                      className="inline-flex h-[46px] w-[46px] cursor-grab items-center justify-center rounded-[8px] border border-[#c5d0de] bg-white text-[#344054] transition duration-200 hover:-translate-y-px active:cursor-grabbing"
-                      draggable
+                      className="inline-flex h-[46px] w-[46px] cursor-grab items-center justify-center rounded-[8px] border border-[#c5d0de] bg-white text-[#344054] transition duration-200 hover:-translate-y-px active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-45"
+                      disabled={!canEditTemplate}
+                      draggable={canEditTemplate}
                       onDragEnd={() => setDraggedTaskId(null)}
                       onDragStart={(event) => {
+                        if (!canEditTemplate) return;
                         setDraggedTaskId(task.id);
                         event.dataTransfer.effectAllowed = "move";
                         event.dataTransfer.setData("text/plain", task.id);
@@ -263,8 +289,9 @@ export function GeoTaskListPage() {
                     </button>
                     <button
                       aria-label={`Delete ${task.task || "task"}`}
-                      className="inline-flex h-[46px] w-[46px] items-center justify-center rounded-[8px] border border-[#ffd5d2] bg-white text-[#f04438] transition duration-200 hover:-translate-y-px"
-                      onClick={() => deleteGeoTaskListTask(activePlan, task)}
+                      className="inline-flex h-[46px] w-[46px] items-center justify-center rounded-[8px] border border-[#ffd5d2] bg-white text-[#f04438] transition duration-200 hover:-translate-y-px disabled:cursor-not-allowed disabled:opacity-45"
+                      disabled={!canEditTemplate}
+                      onClick={() => handleDeleteTask(task)}
                       type="button"
                     >
                       <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5">

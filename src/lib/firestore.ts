@@ -271,6 +271,10 @@ export async function ensureEditableGeoTaskListPlan(planType: PlanType) {
 
 export async function getEditableGeoTaskListPlan(planType: PlanType) {
   await ensureEditableGeoTaskListPlan(planType);
+  return getGeoTaskListPlan(planType);
+}
+
+export async function getGeoTaskListPlan(planType: PlanType) {
   const phaseSnapshot = await getDocs(query(geoTaskListPhasesRef(planType), orderBy("order")));
   const phases = await Promise.all(
     phaseSnapshot.docs.map(async (phaseDoc) => {
