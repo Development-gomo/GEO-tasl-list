@@ -92,9 +92,11 @@ export function DashboardLayout({
   description: string;
   actions?: React.ReactNode;
 }) {
-  const { loadError, logout } = useAuth();
+  const { loadError, logout, profile } = useAuth();
   const { pathname } = useLocation();
   const isProjects = pathname.startsWith("/projects");
+  const firstName = profile?.name.trim().split(/\s+/)[0] || "";
+  const profileLabel = firstName ? `My Profile (${firstName})` : "My Profile";
   const statusLabel = loadError || "System Healthy";
   const statusDotClass = loadError
     ? "mt-[7px] h-2.5 w-2.5 rounded-full bg-[#f04438] shadow-[0_0_0_6px_rgba(240,68,56,0.12)]"
@@ -130,7 +132,7 @@ export function DashboardLayout({
             </NavLink>
             <NavLink to="/profile" className={navLinkClass}>
               <SidebarIcon type="profile" />
-              <span>My Profile</span>
+              <span>{profileLabel}</span>
             </NavLink>
             <NavLink to="/logs" className={navLinkClass}>
               <SidebarIcon type="logs" />
