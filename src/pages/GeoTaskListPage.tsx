@@ -186,7 +186,7 @@ export function GeoTaskListPage() {
 
           <section className="rounded-[8px] border border-[#d7dfeb] bg-white p-[22px] shadow-[0_8px_24px_rgba(16,24,40,0.06)]">
             <div className="mb-3.5 flex flex-col justify-between gap-4 xl:flex-row xl:items-center">
-              <h3 className="text-lg font-semibold text-[#070c11]">GEO Task List</h3>
+              <h3 className="text-lg font-bold text-[#070c11]">GEO Task List</h3>
               <div className="flex flex-wrap items-center justify-end gap-3">
                 {!canEditTemplate ? (
                   <span className="rounded-[8px] border border-[#d7dfeb] bg-[#f8fafc] px-3 py-2 text-sm font-semibold text-[#667085]">

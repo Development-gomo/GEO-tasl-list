@@ -151,7 +151,7 @@ export function ProjectEditPage() {
             <section className="overflow-hidden rounded-[8px] border border-[#d7dfeb] bg-white shadow-[0_8px_24px_rgba(16,24,40,0.06)]">
               <form className="grid" onSubmit={handleSubmit}>
                 <div className="grid gap-3 rounded-[8px] bg-white p-[18px]">
-                  <h3 className="mb-0.5 text-lg font-semibold text-[#070c11]">Project Information</h3>
+                  <h3 className="mb-0.5 text-lg font-bold text-[#070c11]">Project Information</h3>
 
                   <label className={labelClass}>
                     Project name
@@ -190,7 +190,7 @@ export function ProjectEditPage() {
 
                 <div className="border-t border-[#d7dfeb] bg-white p-[18px]">
                   <div className="mb-3.5 flex items-center justify-between gap-4">
-                    <h3 className="text-lg font-semibold text-[#070c11]">Team Members</h3>
+                    <h3 className="text-lg font-bold text-[#070c11]">Team Members</h3>
                     <span className="inline-flex items-center justify-center rounded-[8px] bg-[#f2f4f7] px-3 py-2 text-[0.84rem] font-bold text-[#475467]">
                       {draftMembers.length} attached
                     </span>
@@ -243,7 +243,7 @@ export function ProjectEditPage() {
               <div className="fixed inset-0 z-[3000] flex items-center justify-center bg-[rgba(7,12,17,0.22)] px-4 py-6">
                 <div className="w-full max-w-[520px] overflow-hidden rounded-[8px] bg-white shadow-[0_24px_64px_rgba(16,24,40,0.24)]">
                   <div className="border-b border-[#d7dfeb] px-6 py-4">
-                    <h3 className="m-0 text-[18px] leading-[1.25] font-semibold text-[#070c11]">Delete Project</h3>
+                    <h3 className="m-0 text-[18px] leading-[1.25] font-bold text-[#070c11]">Delete Project</h3>
                   </div>
                   <div className="px-6 py-5 text-sm leading-6 text-[#667085]">
                     Do you really want to delete this project from the tool? This removes the project record from the dashboard.

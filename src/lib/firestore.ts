@@ -502,17 +502,11 @@ function projectTeamMemberPayload(member: DirectoryTeamMember, updatedAt: string
 export async function updateProjectActivePlan(projectId: string, planType: PlanType) {
   const projectSnapshot = await getDoc(projectRef(projectId));
   const project = projectSnapshot.exists() ? ({ id: projectSnapshot.id, ...projectSnapshot.data() } as Project) : null;
+  if (project?.activePlanType === planType) return;
+
   await updateDoc(projectRef(projectId), {
     activePlanType: planType,
     updatedAt: nowIso(),
-  });
-  await createAuditLog({
-    actionLabel: "Project Plan Changed",
-    projectId,
-    projectName: project?.name || "",
-    detailsEntries: [
-      { task: "Project", field: "Active Plan", from: project?.activePlanType || "", to: planType },
-    ],
   });
 }
 

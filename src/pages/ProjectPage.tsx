@@ -52,12 +52,12 @@ export function ProjectPage() {
       >
         {!project ? (
           <section className="panel p-6">
-            <h1 className="text-xl font-semibold">Project not found</h1>
+            <h1 className="text-xl font-bold">Project not found</h1>
             <Link className="btn-secondary mt-4" to="/projects/">Back to workspaces</Link>
           </section>
         ) : (
           <div className="grid gap-4">
-            <TaskTableEditor planType={planType} projectId={projectId} onPlanSelect={handlePlanSelect} />
+            <TaskTableEditor planType={planType} projectId={projectId} projectName={project.name} onPlanSelect={handlePlanSelect} />
           </div>
         )}
       </DashboardLayout>

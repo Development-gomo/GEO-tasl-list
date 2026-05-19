@@ -15,7 +15,7 @@ export function AuthGuard({ children, adminOnly = false }: { children: React.Rea
     return (
       <div className="grid min-h-screen place-items-center p-6">
         <div className="panel max-w-md p-6 text-center">
-          <h1 className="text-xl font-semibold">Admin access required</h1>
+          <h1 className="text-xl font-bold">Admin access required</h1>
           <p className="mt-2 text-sm text-slate-500">Your profile is active, but this area is only available to admins.</p>
         </div>
       </div>

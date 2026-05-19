@@ -55,7 +55,7 @@ export function ProjectList() {
         <div className="mb-[18px] flex flex-col items-start justify-between gap-4 xl:flex-row xl:items-center">
           <div>
             <p className="mb-2 text-[0.78rem] font-extrabold uppercase tracking-[0.12em] text-[#17b26a]">Project Grid</p>
-            <h2 className="m-0 text-[18px] leading-[1.25] font-semibold text-[#070c11]">All created projects</h2>
+            <h2 className="m-0 text-[18px] leading-[1.25] font-bold text-[#070c11]">All created projects</h2>
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <div className="inline-flex items-center gap-1 rounded-[8px] border border-[#d7dfeb] bg-white p-[5px]" aria-label="Project status filter">
@@ -118,7 +118,7 @@ export function ProjectList() {
                 </div>
 
                 <div>
-                  <h3 className="mb-2.5 text-[20px] leading-[1.25] font-semibold text-[#070c11]">{project.name}</h3>
+                  <h3 className="mb-2.5 text-[20px] leading-[1.25] font-bold text-[#070c11]">{project.name}</h3>
                   <p className="m-0 text-[0.95rem] text-[#667085]">{project.description || "No project description added yet."}</p>
                 </div>
 

@@ -87,7 +87,7 @@ export function ProjectCreatePage() {
           <section className="overflow-hidden rounded-[8px] border border-[#d7dfeb] bg-white shadow-[0_8px_24px_rgba(16,24,40,0.06)]">
             <form className="grid" onSubmit={handleSubmit}>
               <div className="grid gap-3 rounded-[8px] bg-white p-[18px]">
-                <h3 className="mb-0.5 text-lg font-semibold text-[#070c11]">Project Information</h3>
+                <h3 className="mb-0.5 text-lg font-bold text-[#070c11]">Project Information</h3>
 
                 <label className={labelClass}>
                   Project name
@@ -126,7 +126,7 @@ export function ProjectCreatePage() {
 
               <div className="border-t border-[#d7dfeb] bg-white p-[18px]">
                 <div className="mb-3.5 flex items-center justify-between gap-4">
-                  <h3 className="text-lg font-semibold text-[#070c11]">Team Members</h3>
+                  <h3 className="text-lg font-bold text-[#070c11]">Team Members</h3>
                   <span className="inline-flex items-center justify-center rounded-[8px] bg-[#f2f4f7] px-3 py-2 text-[0.84rem] font-bold text-[#475467]">
                     {draftMembers.length} attached
                   </span>

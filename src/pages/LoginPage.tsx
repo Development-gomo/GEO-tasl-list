@@ -52,7 +52,7 @@ export function LoginPage() {
             <p className="mt-8 mb-3 text-[0.78rem] font-extrabold uppercase tracking-[0.12em] text-[#17b26a]">
               GEO Service Command Centre
             </p>
-            <h1 className="m-0 max-w-[420px] text-[32px] leading-[1.15] font-semibold text-[#070c11]">
+            <h1 className="m-0 max-w-[420px] text-[32px] leading-[1.15] font-bold text-[#070c11]">
               Run every GEO rollout from one secure workspace.
             </h1>
             <p className="mt-3 mb-5 max-w-[460px] text-[15px] leading-6 text-[#667085]">
@@ -85,7 +85,7 @@ export function LoginPage() {
             <p className="mb-2 text-[0.78rem] font-extrabold uppercase tracking-[0.12em] text-[#17b26a]">
               Sign in
             </p>
-            <h2 className="m-0 text-[20px] leading-[1.25] font-semibold text-[#070c11]">
+            <h2 className="m-0 text-[20px] leading-[1.25] font-bold text-[#070c11]">
               Access the project workspace
             </h2>
             <p className="mt-3 text-sm leading-6 text-[#667085]">

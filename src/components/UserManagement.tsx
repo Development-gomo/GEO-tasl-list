@@ -362,7 +362,7 @@ function Modal({ children, title, onClose }: { children: ReactNode; title: strin
     <div className="fixed inset-0 z-50 grid place-items-center bg-[#0f172a]/35 px-4 py-6">
       <section className="w-full max-w-[560px] rounded-[8px] border border-[#d7dfeb] bg-white shadow-[0_24px_70px_rgba(16,24,40,0.22)]">
         <div className="flex items-center justify-between border-b border-[#d7dfeb] px-6 py-4">
-          <h2 className="text-xl font-semibold text-[#070c11]">{title}</h2>
+          <h2 className="text-xl font-bold text-[#070c11]">{title}</h2>
           <button className="btn-secondary h-9 w-9 px-0 py-0 text-lg" type="button" aria-label="Close dialog" onClick={onClose}>×</button>
         </div>
         <div className="p-6">{children}</div>

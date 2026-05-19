@@ -13,11 +13,13 @@ const statuses = ["To Do", "In Progress", "Blocked", "Done"] as const;
 
 export function TaskTableEditor({
   projectId,
+  projectName,
   planType,
   disabled = false,
   onPlanSelect,
 }: {
   projectId: string;
+  projectName?: string;
   planType: PlanType;
   disabled?: boolean;
   onPlanSelect?: (type: PlanType) => Promise<void> | void;
@@ -93,6 +95,7 @@ export function TaskTableEditor({
   const activePhase = phases.find((phase) => phase.id === selectedPhaseId);
   const activePhaseTasks = activePhase ? tasks.filter((task) => task.phaseId === activePhase.id) : tasks;
   const activeProgress = progressForTasks(activePhaseTasks);
+  const exportProjectSlug = slugifyFilename(projectName || projectId);
 
   async function patchTask(task: Task, field: keyof Task, value: string) {
     const nextTask = { ...task, [field]: value };
@@ -128,12 +131,13 @@ export function TaskTableEditor({
     const worksheet = XLSX.utils.json_to_sheet(rows);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, `${planType}-Day Plan`);
-    XLSX.writeFile(workbook, `geo-${projectId}-${planType}-day-plan.xlsx`);
+    const filename = `${exportProjectSlug}-geo-${planType}-day-plan.xlsx`;
+    XLSX.writeFile(workbook, filename);
     if (firebaseUser) {
       await recordImportExport(projectId, {
         planType,
         kind: "export",
-        filename: `geo-${projectId}-${planType}-day-plan.xlsx`,
+        filename,
         rows: rows.length,
         createdBy: firebaseUser.uid,
       });
@@ -188,7 +192,7 @@ export function TaskTableEditor({
       <section className="panel grid min-h-64 place-items-center p-6 text-center">
         <div>
           <span className="badge bg-amber-50 text-amber-700">Coming soon</span>
-          <h2 className="mt-4 text-xl font-semibold">90-day plan is locked</h2>
+          <h2 className="mt-4 text-xl font-bold">90-day plan is locked</h2>
           <p className="mt-2 text-sm text-[#65728a]">The data model is ready for it, but the task template is not enabled yet.</p>
         </div>
       </section>
@@ -254,6 +258,14 @@ export function TaskTableEditor({
       </div>
     </>
   );
+}
+
+function slugifyFilename(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "project";
 }
 
 function TaskAccordionCard({

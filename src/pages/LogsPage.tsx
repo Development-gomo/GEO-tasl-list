@@ -1,5 +1,6 @@
 import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
+import * as XLSX from "xlsx";
 import { AuthGuard } from "@/components/AuthGuard";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useAuth } from "@/context/AuthContext";
@@ -185,6 +186,47 @@ export function LogsPage() {
     setSelectedEndDate("");
   }
 
+  function exportFilteredLogs() {
+    const rows = filteredLogs.flatMap((log) => {
+      const historyItems = log.history || [];
+      const detailRows = historyItems.flatMap((historyItem) =>
+        (historyItem.detailsEntries || []).map((entry) => ({
+          Project: log.projectName || "Workspace",
+          Category: log.actionLabel || "",
+          Task: entry.task || "Record",
+          Field: entry.field || "Summary",
+          From: displayAuditValue(entry.from),
+          To: displayAuditValue(entry.to),
+          Owner: resolveUserName(log),
+          "User Email": log.userEmail || "",
+          Date: formatLogTimestamp(historyItem.changedAt || log.createdAt),
+          Summary: historyItem.summary || log.details || "",
+        })),
+      );
+
+      if (detailRows.length) return detailRows;
+
+      return [{
+        Project: log.projectName || "Workspace",
+        Category: log.actionLabel || "",
+        Task: "No task detail",
+        Field: "Summary",
+        From: displayAuditValue(log.details),
+        To: "Updated",
+        Owner: resolveUserName(log),
+        "User Email": log.userEmail || "",
+        Date: formatLogTimestamp(log.createdAt),
+        Summary: log.details || "",
+      }];
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Activity Logs");
+    const dateStamp = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(workbook, `activity-logs-${dateStamp}.xlsx`);
+  }
+
   function showTooltip(event: React.MouseEvent, content: string) {
     setHoveredTooltip({ content, x: event.clientX + 16, y: event.clientY + 16 });
   }
@@ -220,7 +262,19 @@ export function LogsPage() {
               </select>
               <input className={inputClass} type="date" value={selectedStartDate} onChange={(event) => setSelectedStartDate(event.target.value)} />
               <input className={inputClass} type="date" value={selectedEndDate} onChange={(event) => setSelectedEndDate(event.target.value)} />
-              <button className="btn-secondary" type="button" onClick={resetFilters}>Reset Filters</button>
+              <div className="flex items-center gap-2">
+                <button className="btn-secondary whitespace-nowrap" type="button" onClick={resetFilters}>Reset Filters</button>
+                <button
+                  aria-label="Export logs"
+                  className="btn-secondary h-[46px] w-[46px] px-0 py-0"
+                  disabled={!filteredLogs.length}
+                  onClick={exportFilteredLogs}
+                  title="Export logs"
+                  type="button"
+                >
+                  <DownloadIcon />
+                </button>
+              </div>
             </div>
           </section>
 
@@ -370,7 +424,7 @@ function LogDetailsModal({ log, onClose, resolveUserName }: { log: AuditLog; onC
       <div className="max-h-[90vh] w-full max-w-[980px] overflow-y-auto rounded-[8px] bg-white shadow-[0_24px_64px_rgba(16,24,40,0.24)]" onClick={(event) => event.stopPropagation()}>
         <div className="flex items-start justify-between gap-4 border-b border-[#d7dfeb] px-6 py-4">
           <div>
-            <h3 className="m-0 text-[18px] leading-[1.25] font-semibold text-[#070c11]">{log.actionLabel}</h3>
+            <h3 className="m-0 text-[18px] leading-[1.25] font-bold text-[#070c11]">{log.actionLabel}</h3>
             <p className="mt-1 text-sm text-[#667085]">{log.projectName || "Workspace"} | {resolveUserName(log)} | {formatLogTimestamp(log.createdAt)}</p>
           </div>
           <button aria-label="Close log details" className="inline-flex h-9 w-9 items-center justify-center rounded-[8px] border border-[#d7dfeb] bg-white text-[#475467] transition duration-200 hover:-translate-y-px" onClick={onClose} type="button">
@@ -426,6 +480,16 @@ function TrashIcon() {
       <path d="M9 7V5.8C9 4.81 9.81 4 10.8 4h2.4C14.19 4 15 4.81 15 5.8V7" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.9" />
       <path d="M7 7l.8 11.2A2 2 0 0 0 9.79 20h4.42a2 2 0 0 0 1.99-1.8L17 7" fill="none" stroke="currentColor" strokeLinejoin="round" strokeLinecap="round" strokeWidth="1.9" />
       <path d="M10 11v5M14 11v5" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.9" />
+    </svg>
+  );
+}
+
+function DownloadIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5">
+      <path d="M12 4v10" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.9" />
+      <path d="M8 10.5 12 14.5 16 10.5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.9" />
+      <path d="M5 19h14" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.9" />
     </svg>
   );
 }
