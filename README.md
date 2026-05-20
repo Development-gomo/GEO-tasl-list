@@ -7,7 +7,7 @@ Production React app for GEO delivery planning. The app uses:
 - Tailwind CSS
 - Firebase Authentication
 - Cloud Firestore
-- Firebase Admin SDK only for the optional seed script
+- Firebase Admin SDK for the optional seed script and protected Vercel admin API routes
 
 Supabase has been removed. Old static prototype files are kept locally in `legacy/`, which is ignored by Git.
 
@@ -36,6 +36,8 @@ Create the first admin manually:
 
 Admins can create additional users from the app. The app uses a secondary Firebase client app to create Firebase Auth accounts without logging out the current admin. Passwords are created in Firebase Auth and are never stored in Firestore.
 
+Deleting a user from User Management calls a protected serverless API route that deletes both the Firestore profile and the Firebase Authentication account. Super admins can also reset another user's password from the same page.
+
 ## Environment Variables
 
 Copy `.env.local.example` to `.env.local` and fill in the Firebase web app values:
@@ -46,7 +48,7 @@ cp .env.local.example .env.local
 
 Because this is a Vite React app, Firebase browser variables must use the `VITE_FIREBASE_*` prefix.
 
-For the optional `npm run seed:admin` bootstrap command, also add a Firebase service account:
+For the optional `npm run seed:admin` bootstrap command and the protected user-admin API routes, also add a Firebase service account:
 
 ```txt
 FIREBASE_ADMIN_PROJECT_ID=

@@ -3,7 +3,7 @@ import { FormEvent, ReactNode, useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { db } from "@/lib/firebase";
 import { formatLoadError } from "@/lib/loadError";
-import { createManagedUser, deleteManagedUser, updateManagedUser, userAdminError } from "@/lib/userAdmin";
+import { createManagedUser, deleteManagedUser, resetManagedUserPassword, updateManagedUser, userAdminError } from "@/lib/userAdmin";
 import type { UserProfile, UserRole, UserStatus } from "@/types";
 
 type UserDraft = {
@@ -48,6 +48,10 @@ function canDeleteUser(currentRole: UserRole | undefined, target: UserProfile, c
   return false;
 }
 
+function canResetPassword(currentRole: UserRole | undefined) {
+  return currentRole === "super_admin";
+}
+
 type UserTab = "all" | "active" | "disabled";
 
 export function UserManagement({
@@ -61,6 +65,8 @@ export function UserManagement({
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [draft, setDraft] = useState<UserDraft>(emptyDraft);
   const [editing, setEditing] = useState<UserProfile | null>(null);
+  const [passwordResetUser, setPasswordResetUser] = useState<UserProfile | null>(null);
+  const [passwordDraft, setPasswordDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [activeTab, setActiveTab] = useState<UserTab>("all");
@@ -108,7 +114,7 @@ export function UserManagement({
   }
 
   async function handleDelete(user: UserProfile) {
-    const confirmed = window.confirm(`Delete ${user.name || user.email}? This removes their app profile.`);
+    const confirmed = window.confirm(`Delete ${user.name || user.email}? This removes their app profile and Firebase Authentication account.`);
     if (!confirmed) return;
     setBusy(true);
     setMessage("");
@@ -116,6 +122,24 @@ export function UserManagement({
       await deleteManagedUser(user);
       if (editing?.uid === user.uid) setEditing(null);
       setMessage("User deleted.");
+    } catch (error) {
+      setMessage(userAdminError(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handlePasswordReset(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!passwordResetUser) return;
+
+    setBusy(true);
+    setMessage("");
+    try {
+      await resetManagedUserPassword(passwordResetUser, passwordDraft);
+      setPasswordResetUser(null);
+      setPasswordDraft("");
+      setMessage("Password updated.");
     } catch (error) {
       setMessage(userAdminError(error));
     } finally {
@@ -157,7 +181,26 @@ export function UserManagement({
         tabs={tabs}
         users={filteredUsers}
         onDelete={handleDelete}
+        onResetPassword={(user) => {
+          setPasswordResetUser(user);
+          setPasswordDraft("");
+          setMessage("");
+        }}
         onUpdate={handleUpdate}
+      />
+
+      <ResetPasswordModal
+        busy={busy}
+        isOpen={Boolean(passwordResetUser)}
+        message={message}
+        password={passwordDraft}
+        user={passwordResetUser}
+        setPassword={setPasswordDraft}
+        onClose={() => {
+          setPasswordResetUser(null);
+          setPasswordDraft("");
+        }}
+        onSubmit={handlePasswordReset}
       />
     </div>
   );
@@ -174,6 +217,7 @@ function UserTable({
   setActiveTab,
   setEditing,
   onDelete,
+  onResetPassword,
   onUpdate,
 }: {
   activeTab: UserTab;
@@ -186,6 +230,7 @@ function UserTable({
   setActiveTab: (tab: UserTab) => void;
   setEditing: (user: UserProfile | null) => void;
   onDelete: (user: UserProfile) => Promise<void>;
+  onResetPassword: (user: UserProfile) => void;
   onUpdate: (user: UserProfile) => Promise<void>;
 }) {
   return (
@@ -221,6 +266,7 @@ function UserTable({
               const value = isEditing ? editing : user;
               const editable = canEditUser(currentRole, user);
               const deletable = canDeleteUser(currentRole, user, currentUid);
+              const passwordResettable = canResetPassword(currentRole);
               const editableRoles = currentRole === "super_admin" ? ["user", "admin", "super_admin"] as UserRole[] : ["user", "admin"] as UserRole[];
               return (
                 <tr key={user.uid}>
@@ -251,6 +297,11 @@ function UserTable({
                       </div>
                     ) : editable ? (
                       <div className="gantt-actions-cell">
+                        {passwordResettable ? (
+                          <IconButton className="gantt-grid-edit" disabled={busy} label={`Reset password for ${user.name || user.email}`} title="Reset password" onClick={() => onResetPassword(user)}>
+                            <PasswordIcon />
+                          </IconButton>
+                        ) : null}
                         <IconButton className="gantt-grid-edit" label={`Edit ${user.name || user.email}`} title="Edit user" onClick={() => setEditing(user)}>
                           <EditIcon />
                         </IconButton>
@@ -262,8 +313,19 @@ function UserTable({
                       </div>
                     ) : deletable ? (
                       <div className="gantt-actions-cell">
+                        {passwordResettable ? (
+                          <IconButton className="gantt-grid-edit" disabled={busy} label={`Reset password for ${user.name || user.email}`} title="Reset password" onClick={() => onResetPassword(user)}>
+                            <PasswordIcon />
+                          </IconButton>
+                        ) : null}
                         <IconButton className="gantt-grid-delete" disabled={busy} label={`Delete ${user.name || user.email}`} title="Delete user" onClick={() => onDelete(user)}>
                           <DeleteIcon />
+                        </IconButton>
+                      </div>
+                    ) : passwordResettable ? (
+                      <div className="gantt-actions-cell">
+                        <IconButton className="gantt-grid-edit" disabled={busy} label={`Reset password for ${user.name || user.email}`} title="Reset password" onClick={() => onResetPassword(user)}>
+                          <PasswordIcon />
                         </IconButton>
                       </div>
                     ) : (
@@ -282,6 +344,50 @@ function UserTable({
         </table>
       </div>
     </section>
+  );
+}
+
+function ResetPasswordModal({
+  busy,
+  isOpen,
+  message,
+  password,
+  user,
+  setPassword,
+  onClose,
+  onSubmit,
+}: {
+  busy: boolean;
+  isOpen: boolean;
+  message: string;
+  password: string;
+  user: UserProfile | null;
+  setPassword: (password: string) => void;
+  onClose: () => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  if (!isOpen || !user) return null;
+
+  return (
+    <Modal title="Reset password" onClose={onClose}>
+      <form className="grid gap-4" onSubmit={onSubmit}>
+        <div>
+          <p className="text-sm font-semibold text-[#070c11]">{user.name || user.email}</p>
+          <p className="text-sm text-[#667085]">{user.email}</p>
+        </div>
+        <label className="field">
+          <span>New password</span>
+          <input className="input min-h-[46px]" type="password" value={password} onChange={(event) => setPassword(event.target.value)} minLength={6} required />
+        </label>
+        <div className="flex items-center justify-between gap-3 pt-2">
+          <p className="text-sm text-[#65728a]">{message}</p>
+          <div className="flex gap-2">
+            <button className="btn-secondary" type="button" onClick={onClose}>Cancel</button>
+            <button className="btn-primary" disabled={busy || password.length < 6} type="submit">{busy ? "Working..." : "Update password"}</button>
+          </div>
+        </div>
+      </form>
+    </Modal>
   );
 }
 
@@ -398,6 +504,16 @@ function EditIcon() {
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <path d="M4 20h4l9.8-9.8-4-4L4 16v4Z" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinejoin="round" />
       <path d="m12.8 6.2 4 4 1.8-1.8a1.9 1.9 0 0 0 0-2.8l-1.2-1.2a1.9 1.9 0 0 0-2.8 0l-1.8 1.8Z" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function PasswordIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M8 11V8.5A4 4 0 0 1 15.74 7" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+      <path d="M7.5 11h9A2.5 2.5 0 0 1 19 13.5v3A2.5 2.5 0 0 1 16.5 19h-9A2.5 2.5 0 0 1 5 16.5v-3A2.5 2.5 0 0 1 7.5 11Z" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinejoin="round" />
+      <path d="M12 14.5v1.2" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
     </svg>
   );
 }

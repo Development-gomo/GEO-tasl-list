@@ -1,8 +1,8 @@
 import { FirebaseError, initializeApp } from "firebase/app";
 import { createUserWithEmailAndPassword, getAuth, updatePassword, updateProfile } from "firebase/auth";
-import { deleteDoc, doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 import { auditDiff, createAuditLog } from "@/lib/auditLog";
-import { db } from "@/lib/firebase";
+import { auth, db } from "@/lib/firebase";
 import { nowIso } from "@/lib/time";
 import type { UserProfile, UserRole, UserStatus } from "@/types";
 
@@ -89,16 +89,13 @@ export async function updateManagedUser(profile: Pick<UserProfile, "uid" | "name
 }
 
 export async function deleteManagedUser(profile: Pick<UserProfile, "uid" | "name" | "email" | "role">) {
-  await deleteDoc(doc(db, "users", profile.uid));
-  await createAuditLog({
-    actionLabel: "User Deleted",
-    projectName: "Workspace",
-    details: `Deleted user ${profile.name || profile.email}`,
-    detailsEntries: [
-      { task: "User Management", field: "Name", from: profile.name || profile.email || profile.uid, to: "" },
-      { task: "User Management", field: "Email", from: profile.email || "", to: "" },
-      { task: "User Management", field: "Role", from: profile.role, to: "" },
-    ],
+  await callAdminUserApi(profile.uid, { method: "DELETE" });
+}
+
+export async function resetManagedUserPassword(profile: Pick<UserProfile, "uid">, password: string) {
+  await callAdminUserApi(profile.uid, {
+    method: "PATCH",
+    body: JSON.stringify({ password }),
   });
 }
 
@@ -120,4 +117,24 @@ export function userAdminError(error: unknown) {
   if (error instanceof FirebaseError) return error.message;
   if (error instanceof Error) return error.message;
   return "User management request failed.";
+}
+
+async function callAdminUserApi(uid: string, init: RequestInit) {
+  const user = auth.currentUser;
+  if (!user) throw new Error("You need to be signed in to manage users.");
+
+  const token = await user.getIdToken();
+  const response = await fetch(`/api/admin-users/${uid}`, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+      ...init.headers,
+    },
+  });
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new Error(body?.error || "User management request failed.");
+  }
 }
