@@ -607,7 +607,7 @@ function ProjectTaskOverview({
               onClick={() => onPlanSelect?.(type)}
               type="button"
             >
-              {type}-day {type === "90" ? "locked" : "plan"}
+              {type}-day plan
             </button>
           ))}
         </div>

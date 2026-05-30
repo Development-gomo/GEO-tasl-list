@@ -3,6 +3,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import { AuthGuard } from "@/components/AuthGuard";
 import { DashboardLayout } from "@/components/DashboardLayout";
+import { OperationOverlay } from "@/components/OperationOverlay";
 import { useAuth } from "@/context/AuthContext";
 import { db } from "@/lib/firebase";
 import { deleteProject, updateProjectBasics } from "@/lib/firestore";
@@ -32,6 +33,7 @@ export function ProjectEditPage() {
     description: "",
   });
   const [busy, setBusy] = useState(false);
+  const [busyMessage, setBusyMessage] = useState("");
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const canDeleteProject = profile?.role === "admin" || profile?.role === "super_admin";
 
@@ -116,25 +118,39 @@ export function ProjectEditPage() {
     if (!projectId || !formState.name.trim()) return;
 
     setBusy(true);
-    await updateProjectBasics(
-      projectId,
-      {
-        name: formState.name.trim(),
-        status: formState.status,
-        description: formState.description.trim(),
-      },
-      draftMembers,
-    );
-    setBusy(false);
-    navigate(`/projects/${projectId}`);
+    setBusyMessage("Saving project details and team assignments.");
+    try {
+      await updateProjectBasics(
+        projectId,
+        {
+          name: formState.name.trim(),
+          status: formState.status,
+          description: formState.description.trim(),
+        },
+        draftMembers,
+      );
+      navigate(`/projects/${projectId}`);
+    } catch (error) {
+      reportLoadError("project-edit-submit", formatLoadError("Project update", error));
+    } finally {
+      setBusy(false);
+      setBusyMessage("");
+    }
   }
 
   async function handleConfirmDelete() {
     if (!projectId) return;
     setBusy(true);
-    await deleteProject(projectId);
-    setBusy(false);
-    navigate("/projects/");
+    setBusyMessage("Deleting the project, plans, tasks, and team assignments.");
+    try {
+      await deleteProject(projectId);
+      navigate("/projects/");
+    } catch (error) {
+      reportLoadError("project-delete-submit", formatLoadError("Project deletion", error));
+    } finally {
+      setBusy(false);
+      setBusyMessage("");
+    }
   }
 
   return (
@@ -144,6 +160,7 @@ export function ProjectEditPage() {
         description="Update project details and attach team members from the shared directory."
         actions={<Link className="btn-secondary h-12 px-5" to={projectId ? `/projects/${projectId}` : "/projects"}>Back to Project</Link>}
       >
+        {busy ? <OperationOverlay title={isDeleteConfirmOpen ? "Deleting project" : "Saving project"} message={busyMessage || "Please wait while the tool updates the backend."} /> : null}
         {project === undefined ? (
           <section className="panel p-6 text-sm text-[#667085]">Loading project...</section>
         ) : (
@@ -249,9 +266,9 @@ export function ProjectEditPage() {
                     Do you really want to delete this project from the tool? This removes the project record from the dashboard.
                   </div>
                   <div className="flex justify-end gap-3 border-t border-[#d7dfeb] bg-[#fcfdff] px-6 py-4">
-                    <button className="btn-secondary" type="button" onClick={() => setIsDeleteConfirmOpen(false)}>Cancel</button>
+                    <button className="btn-secondary" disabled={busy} type="button" onClick={() => setIsDeleteConfirmOpen(false)}>Cancel</button>
                     <button className="btn-primary bg-[#f04438] shadow-[0_10px_20px_rgba(240,68,56,0.18)] hover:bg-[#d92d20]" disabled={busy} type="button" onClick={handleConfirmDelete}>
-                      Confirm
+                      {busy ? "Deleting..." : "Confirm"}
                     </button>
                   </div>
                 </div>

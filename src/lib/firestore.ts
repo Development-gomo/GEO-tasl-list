@@ -10,6 +10,7 @@ import {
   setDoc,
   updateDoc,
   writeBatch,
+  type DocumentReference,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { auditDiff, createAuditLog } from "@/lib/auditLog";
@@ -47,6 +48,21 @@ const taskFieldLabels = {
   googleDriveLink: "Google Drive Link",
   notes: "Notes",
 };
+
+type GeoTaskListPlan = Awaited<ReturnType<typeof getGeoTaskListPlan>>;
+
+const geoTaskListPlanCache = new Map<PlanType, GeoTaskListPlan>();
+const geoTaskListPlanCachePromises = new Map<PlanType, Promise<GeoTaskListPlan>>();
+
+function clearGeoTaskListPlanCache(planType?: PlanType) {
+  if (planType) {
+    geoTaskListPlanCache.delete(planType);
+    geoTaskListPlanCachePromises.delete(planType);
+    return;
+  }
+  geoTaskListPlanCache.clear();
+  geoTaskListPlanCachePromises.clear();
+}
 
 export function projectRef(projectId: string) {
   return doc(db, "projects", projectId);
@@ -215,7 +231,7 @@ export async function createProjectFromDirectory(
   });
 
   await batch.commit();
-  await createAuditLog({
+  createAuditLog({
     actionLabel: "Project Created",
     projectId: project.id,
     projectName: projectData.name,
@@ -225,7 +241,7 @@ export async function createProjectFromDirectory(
       { task: "Project", field: "Status", from: "", to: projectData.status || "active" },
       { task: "Project", field: "Team members", from: "0", to: String(members.length) },
     ],
-  });
+  }).catch((error) => console.error("Failed to create project audit log", error));
   return project.id;
 }
 
@@ -267,11 +283,32 @@ export async function ensureEditableGeoTaskListPlan(planType: PlanType) {
   });
 
   await batch.commit();
+  clearGeoTaskListPlanCache(planType);
 }
 
 export async function getEditableGeoTaskListPlan(planType: PlanType) {
-  await ensureEditableGeoTaskListPlan(planType);
-  return getGeoTaskListPlan(planType);
+  const cached = geoTaskListPlanCache.get(planType);
+  if (cached) return cached;
+
+  const pending = geoTaskListPlanCachePromises.get(planType);
+  if (pending) return pending;
+
+  const promise = (async () => {
+    await ensureEditableGeoTaskListPlan(planType);
+    const plan = await getGeoTaskListPlan(planType);
+    geoTaskListPlanCache.set(planType, plan);
+    geoTaskListPlanCachePromises.delete(planType);
+    return plan;
+  })().catch((error) => {
+    geoTaskListPlanCachePromises.delete(planType);
+    throw error;
+  });
+  geoTaskListPlanCachePromises.set(planType, promise);
+  return promise;
+}
+
+export async function warmEditableGeoTaskListPlanCache() {
+  await Promise.all((["30", "60", "90"] as PlanType[]).map((planType) => getEditableGeoTaskListPlan(planType)));
 }
 
 export async function getGeoTaskListPlan(planType: PlanType) {
@@ -340,6 +377,7 @@ export async function addGeoTaskListTask(planType: PlanType, phaseId?: string) {
     createdAt,
     updatedAt: createdAt,
   });
+  clearGeoTaskListPlanCache(planType);
   await createAuditLog({
     actionLabel: "GEO Task Added",
     projectName: "GEO Task List",
@@ -366,6 +404,7 @@ export async function updateGeoTaskListTask(planType: PlanType, task: Task) {
     updatedAt: nowIso(),
   };
   await updateDoc(ref, payload);
+  clearGeoTaskListPlanCache(planType);
   const detailsEntries = auditDiff(before, payload, {
     dayTarget: "Day Target",
     number: "Task #",
@@ -387,6 +426,7 @@ export async function updateGeoTaskListTask(planType: PlanType, task: Task) {
 
 export async function deleteGeoTaskListTask(planType: PlanType, task: Task) {
   await deleteDoc(doc(db, "geoTaskLists", "master", "plans", planType, "phases", task.phaseId, "tasks", task.id));
+  clearGeoTaskListPlanCache(planType);
   await createAuditLog({
     actionLabel: "GEO Task Deleted",
     projectName: "GEO Task List",
@@ -407,6 +447,7 @@ export async function reorderGeoTaskListTasks(planType: PlanType, phaseId: strin
     });
   });
   await batch.commit();
+  clearGeoTaskListPlanCache(planType);
   await createAuditLog({
     actionLabel: "GEO Tasks Reordered",
     projectName: "GEO Task List",
@@ -511,35 +552,35 @@ export async function updateProjectActivePlan(projectId: string, planType: PlanT
 }
 
 export async function deleteProject(projectId: string) {
-  const deletes: Promise<void>[] = [];
+  const deleteRefs: DocumentReference[] = [];
   const planTypes: PlanType[] = ["30", "60", "90"];
   const projectSnapshot = await getDoc(projectRef(projectId));
   const project = projectSnapshot.exists() ? ({ id: projectSnapshot.id, ...projectSnapshot.data() } as Project) : null;
 
   const teamMembers = await getDocs(teamRef(projectId));
   teamMembers.docs.forEach((member) => {
-    deletes.push(deleteDoc(member.ref));
+    deleteRefs.push(member.ref);
   });
 
   const importExportMetadata = await getDocs(collection(db, "projects", projectId, "importExportMetadata"));
   importExportMetadata.docs.forEach((metadata) => {
-    deletes.push(deleteDoc(metadata.ref));
+    deleteRefs.push(metadata.ref);
   });
 
-  for (const planType of planTypes) {
+  await Promise.all(planTypes.map(async (planType) => {
     const phases = await getDocs(phasesRef(projectId, planType));
-    for (const phase of phases.docs) {
+    await Promise.all(phases.docs.map(async (phase) => {
       const tasks = await getDocs(tasksRef(projectId, planType, phase.id));
       tasks.docs.forEach((task) => {
-        deletes.push(deleteDoc(task.ref));
+        deleteRefs.push(task.ref);
       });
-      deletes.push(deleteDoc(phase.ref));
-    }
-    deletes.push(deleteDoc(planRef(projectId, planType)));
-  }
+      deleteRefs.push(phase.ref);
+    }));
+    deleteRefs.push(planRef(projectId, planType));
+  }));
 
-  await Promise.all(deletes);
-  await deleteDoc(projectRef(projectId));
+  deleteRefs.push(projectRef(projectId));
+  await commitDeleteBatches(deleteRefs);
   await createAuditLog({
     actionLabel: "Project Deleted",
     projectId,
@@ -549,6 +590,15 @@ export async function deleteProject(projectId: string) {
       { task: "Project", field: "Summary", from: project?.name || projectId, to: "" },
     ],
   });
+}
+
+async function commitDeleteBatches(refs: DocumentReference[]) {
+  const batchSize = 450;
+  for (let index = 0; index < refs.length; index += batchSize) {
+    const batch = writeBatch(db);
+    refs.slice(index, index + batchSize).forEach((ref) => batch.delete(ref));
+    await batch.commit();
+  }
 }
 
 export async function getPhases(projectId: string, planType: PlanType): Promise<Phase[]> {

@@ -1,5 +1,6 @@
 import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { AuthGuard } from "@/components/AuthGuard";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useAuth } from "@/context/AuthContext";
@@ -36,15 +37,25 @@ const planTabs: { id: PlanType; label: string }[] = [
   { id: "60", label: "60 Day Tasks" },
   { id: "90", label: "90 Day Tasks" },
 ];
+const emptyPlanPhases: Record<PlanType, GeoTaskListPhase[]> = { "30": [], "60": [], "90": [] };
+const initialPlanLoading: Record<PlanType, boolean> = { "30": false, "60": false, "90": false };
 
 export function GeoTaskListPage() {
   const { clearLoadError, profile, reportLoadError } = useAuth();
   const [activePlan, setActivePlan] = useState<PlanType>("30");
   const [projectsCount, setProjectsCount] = useState(0);
   const [geoTaskListCounts, setGeoTaskListCounts] = useState<Record<PlanType, number>>({ "30": 0, "60": 0, "90": 0 });
-  const [phases, setPhases] = useState<GeoTaskListPhase[]>([]);
+  const [phasesByPlan, setPhasesByPlan] = useState<Record<PlanType, GeoTaskListPhase[]>>(emptyPlanPhases);
+  const [loadingByPlan, setLoadingByPlan] = useState<Record<PlanType, boolean>>(initialPlanLoading);
+  const phasesByPlanRef = useRef<Record<PlanType, GeoTaskListPhase[]>>(emptyPlanPhases);
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
   const canEditTemplate = profile?.role === "admin" || profile?.role === "super_admin";
+  const phases = phasesByPlan[activePlan] || [];
+  const activePlanLoading = loadingByPlan[activePlan];
+
+  useEffect(() => {
+    phasesByPlanRef.current = phasesByPlan;
+  }, [phasesByPlan]);
 
   useEffect(() => {
     if (!profile) return;
@@ -79,7 +90,7 @@ export function GeoTaskListPage() {
     return () => {
       cancelled = true;
     };
-  }, [activePlan, canEditTemplate, clearLoadError, phases, profile, reportLoadError]);
+  }, [canEditTemplate, clearLoadError, profile, reportLoadError]);
 
   useEffect(() => {
     if (!profile) return;
@@ -88,10 +99,14 @@ export function GeoTaskListPage() {
     let cancelled = false;
 
     async function subscribeToPlan() {
-      setPhases([]);
+      const hasCachedPlan = (phasesByPlanRef.current[activePlan] || []).length > 0;
+      if (!hasCachedPlan) {
+        setLoadingByPlan((current) => ({ ...current, [activePlan]: true }));
+      }
       try {
         if (canEditTemplate) await ensureEditableGeoTaskListPlan(activePlan);
       } catch (error) {
+        setLoadingByPlan((current) => ({ ...current, [activePlan]: false }));
         reportLoadError("geo-task-list-plan", formatLoadError("GEO task list", error));
         return;
       }
@@ -100,6 +115,7 @@ export function GeoTaskListPage() {
         clearLoadError("geo-task-list-plan");
         taskUnsubscribers.forEach((unsubscribe) => unsubscribe());
         taskUnsubscribers = [];
+        const loadedTaskPhaseIds = new Set<string>();
         const nextPhases = snapshot.docs.map((item) => {
           const data = item.data() as Phase;
           return {
@@ -111,19 +127,42 @@ export function GeoTaskListPage() {
             tasks: [],
           };
         });
-        setPhases(nextPhases);
+        if (!nextPhases.length) {
+          setLoadingByPlan((current) => ({ ...current, [activePlan]: false }));
+        }
+        setPhasesByPlan((current) => {
+          const existingPhases = current[activePlan] || [];
+          return {
+            ...current,
+            [activePlan]: nextPhases.map((phase) => ({
+              ...phase,
+              tasks: existingPhases.find((existingPhase) => existingPhase.id === phase.id)?.tasks || [],
+            })),
+          };
+        });
         taskUnsubscribers = nextPhases.map((phase) =>
           onSnapshot(query(geoTaskListTasksRef(activePlan, phase.id), orderBy("number")), (taskSnapshot) => {
             clearLoadError(`geo-task-list-tasks-${phase.id}`);
             const tasks = taskSnapshot.docs.map((item) => ({ id: item.id, ...item.data(), phaseId: phase.id, phaseOrder: phase.order }) as Task);
-            setPhases((current) =>
-              current.map((currentPhase) => (currentPhase.id === phase.id ? { ...currentPhase, tasks } : currentPhase)),
-            );
+            loadedTaskPhaseIds.add(phase.id);
+            setPhasesByPlan((current) => {
+              const updatedPhases = (current[activePlan] || []).map((currentPhase) => (currentPhase.id === phase.id ? { ...currentPhase, tasks } : currentPhase));
+              setGeoTaskListCounts((currentCounts) => ({
+                ...currentCounts,
+                [activePlan]: updatedPhases.reduce((total, currentPhase) => total + currentPhase.tasks.length, 0),
+              }));
+              return { ...current, [activePlan]: updatedPhases };
+            });
+            if (loadedTaskPhaseIds.size >= nextPhases.length) {
+              setLoadingByPlan((current) => ({ ...current, [activePlan]: false }));
+            }
           }, (error) => {
+            setLoadingByPlan((current) => ({ ...current, [activePlan]: false }));
             reportLoadError(`geo-task-list-tasks-${phase.id}`, formatLoadError("GEO task list tasks", error));
           }),
         );
       }, (error) => {
+        setLoadingByPlan((current) => ({ ...current, [activePlan]: false }));
         reportLoadError("geo-task-list-plan", formatLoadError("GEO task list phases", error));
       });
     }
@@ -170,6 +209,15 @@ export function GeoTaskListPage() {
     await deleteGeoTaskListTask(activePlan, task);
   }
 
+  function handlePlanSelect(planType: PlanType) {
+    if (planType === activePlan) return;
+    flushSync(() => {
+      setActivePlan(planType);
+      setDraggedTaskId(null);
+      setLoadingByPlan((current) => ({ ...current, [planType]: true }));
+    });
+  }
+
   return (
     <AuthGuard>
       <DashboardLayout
@@ -202,14 +250,17 @@ export function GeoTaskListPage() {
                           : "rounded-[8px] bg-transparent px-3.5 py-2 text-sm font-semibold text-[#475467] transition duration-200 hover:-translate-y-px"
                       }
                       key={tab.id}
-                      onClick={() => setActivePlan(tab.id)}
+                      onClick={() => handlePlanSelect(tab.id)}
+                      onPointerDown={(event) => {
+                        if (event.button === 0) handlePlanSelect(tab.id);
+                      }}
                       type="button"
                     >
                       {tab.label}
                     </button>
                   ))}
                 </div>
-                <button className="btn-primary px-4 py-2.5 disabled:cursor-not-allowed disabled:opacity-60" disabled={!canEditTemplate} type="button" onClick={handleAddTask}>
+                <button className="btn-primary px-4 py-2.5 disabled:cursor-not-allowed disabled:opacity-60" disabled={!canEditTemplate || activePlanLoading} type="button" onClick={handleAddTask}>
                   Add Task
                 </button>
               </div>
@@ -224,7 +275,13 @@ export function GeoTaskListPage() {
             </div>
 
             <div className="grid gap-3">
-              {tasks.map((task) => (
+              {activePlanLoading ? (
+                <div className="rounded-[8px] border border-[#d7dfeb] bg-[#fbfcfe] p-[14px] text-[#667085]">
+                  Loading {activePlan}-day GEO tasks...
+                </div>
+              ) : null}
+
+              {!activePlanLoading ? tasks.map((task) => (
                 <div
                   className={[
                     `grid items-start gap-2 rounded-[8px] border border-[#d7dfeb] bg-[#fcfdff] p-[14px] ${taskGridColumns}`,
@@ -303,9 +360,9 @@ export function GeoTaskListPage() {
                     </button>
                   </div>
                 </div>
-              ))}
+              )) : null}
 
-              {!tasks.length ? (
+              {!activePlanLoading && !tasks.length ? (
                 <div className="rounded-[8px] border border-dashed border-[#c5d0de] bg-[#fbfcfe] p-[14px] text-[#667085]">
                   No {activePlan}-day GEO tasks yet. Add tasks here and future projects will clone them.
                 </div>

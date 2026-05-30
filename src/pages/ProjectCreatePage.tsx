@@ -3,9 +3,10 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { AuthGuard } from "@/components/AuthGuard";
 import { DashboardLayout } from "@/components/DashboardLayout";
+import { OperationOverlay } from "@/components/OperationOverlay";
 import { useAuth } from "@/context/AuthContext";
 import { db } from "@/lib/firebase";
-import { createProjectFromDirectory } from "@/lib/firestore";
+import { createProjectFromDirectory, warmEditableGeoTaskListPlanCache } from "@/lib/firestore";
 import { formatLoadError } from "@/lib/loadError";
 import type { DirectoryTeamMember, Project } from "@/types";
 
@@ -41,6 +42,12 @@ export function ProjectCreatePage() {
     return unsubscribe;
   }, [clearLoadError, reportLoadError]);
 
+  useEffect(() => {
+    warmEditableGeoTaskListPlanCache().catch((error) => {
+      reportLoadError("project-create-template-cache", formatLoadError("GEO task templates", error));
+    });
+  }, [reportLoadError]);
+
   const availableMembers = useMemo(
     () => directoryMembers.filter((member) => !draftMembers.some((draftMember) => draftMember.id === member.id)),
     [directoryMembers, draftMembers],
@@ -62,18 +69,23 @@ export function ProjectCreatePage() {
     if (!firebaseUser || !formState.name.trim()) return;
 
     setBusy(true);
-    const projectId = await createProjectFromDirectory(
-      {
-        name: formState.name.trim(),
-        client: "GO MO Group",
-        status: formState.status,
-        description: formState.description.trim(),
-      },
-      firebaseUser.uid,
-      draftMembers,
-    );
-    setBusy(false);
-    navigate(`/projects/${projectId}`);
+    try {
+      const projectId = await createProjectFromDirectory(
+        {
+          name: formState.name.trim(),
+          client: "GO MO Group",
+          status: formState.status,
+          description: formState.description.trim(),
+        },
+        firebaseUser.uid,
+        draftMembers,
+      );
+      navigate(`/projects/${projectId}`);
+    } catch (error) {
+      reportLoadError("project-create-submit", formatLoadError("Project creation", error));
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -83,6 +95,7 @@ export function ProjectCreatePage() {
         description="Create a new GEO project, define its status, and attach team members in one flow."
         actions={<Link className="btn-secondary h-12 px-5" to="/projects/">Back to Projects</Link>}
       >
+        {busy ? <OperationOverlay title="Creating project" message="Cloning the GEO task templates and setting up the project workspace." /> : null}
         <div>
           <section className="overflow-hidden rounded-[8px] border border-[#d7dfeb] bg-white shadow-[0_8px_24px_rgba(16,24,40,0.06)]">
             <form className="grid" onSubmit={handleSubmit}>
